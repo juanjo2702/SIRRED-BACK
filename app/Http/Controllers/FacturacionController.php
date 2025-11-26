@@ -119,6 +119,7 @@ class FacturacionController extends Controller
     public function exportFacturaciones(Request $request)
     {
         $corteId = $request->corte_id;
+        $tipoContrato = $request->tipo_contrato;
         $estadoSubida = $request->estado_subida;
         $sedeNombre = $request->sede_nombre;
         $carreraNombre = $request->carrera_nombre;
@@ -132,7 +133,7 @@ class FacturacionController extends Controller
         $filename = "Facturas_{$corteName}_{$date}.xlsx";
 
         return Excel::download(
-            new FacturacionesExport($corteId, $estadoSubida, $sedeNombre, $carreraNombre),
+            new FacturacionesExport($corteId, $tipoContrato, $estadoSubida, $sedeNombre, $carreraNombre),
             $filename
         );
     }

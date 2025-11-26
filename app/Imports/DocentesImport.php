@@ -27,6 +27,13 @@ class DocentesImport implements ToModel, WithHeadingRow
     */
     public function model(array $row)
     {
+        // Validate that CI exists and is not empty
+        $ci = $row['ci'] ?? null;
+        if (empty($ci)) {
+            // Skip rows without CI
+            return null;
+        }
+
         // Map apellidos - try different possible column names
         $primerApellido = $row['1_apellido'] ?? $row['1o_apellido'] ?? $row['primer_apellido'] ?? '';
         $segundoApellido = $row['2_apellido'] ?? $row['2o_apellido'] ?? $row['segundo_apellido'] ?? '';
@@ -37,7 +44,7 @@ class DocentesImport implements ToModel, WithHeadingRow
 
         // Find or create docente by CI, updating if exists
         $docente = Docente::updateOrCreate(
-            ['ci' => $row['ci']],
+            ['ci' => $ci],
             [
                 'nombre' => $nombre,
                 'apellidos' => $apellidos,
@@ -51,8 +58,8 @@ class DocentesImport implements ToModel, WithHeadingRow
             'sede_carrera_id' => $this->sedeCarreraId,
             'corte_id' => $this->corteId,
             'tipo_contrato' => $this->tipoContrato,
-            'monto' => $row['liquido_pagable'],
-            'carga_horaria' => $row['carga_pagada'],
+            'monto' => $row['liquido_pagable'] ?? 0,
+            'carga_horaria' => $row['carga_pagada'] ?? 0,
             'fecha_subida' => null,
             'factura_path' => null,
             'estado_subida' => null

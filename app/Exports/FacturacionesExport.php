@@ -12,13 +12,15 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 class FacturacionesExport implements FromCollection, WithHeadings, WithMapping, WithStyles
 {
     protected $corteId;
+    protected $tipoContrato;
     protected $estadoSubida;
     protected $sedeNombre;
     protected $carreraNombre;
 
-    public function __construct($corteId, $estadoSubida = null, $sedeNombre = null, $carreraNombre = null)
+    public function __construct($corteId, $tipoContrato = null, $estadoSubida = null, $sedeNombre = null, $carreraNombre = null)
     {
         $this->corteId = $corteId;
+        $this->tipoContrato = $tipoContrato;
         $this->estadoSubida = $estadoSubida;
         $this->sedeNombre = $sedeNombre;
         $this->carreraNombre = $carreraNombre;
@@ -27,8 +29,12 @@ class FacturacionesExport implements FromCollection, WithHeadings, WithMapping, 
     public function collection()
     {
         $query = Facturacion::with(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte'])
-            ->where('corte_id', $this->corteId)
-            ->where('tipo_contrato', 'FACTURACION');
+            ->where('corte_id', $this->corteId);
+
+        // Filter by tipo_contrato if provided
+        if ($this->tipoContrato) {
+            $query->where('tipo_contrato', $this->tipoContrato);
+        }
 
         if ($this->estadoSubida !== null && $this->estadoSubida !== 'null') {
             $query->where('estado_subida', $this->estadoSubida);
