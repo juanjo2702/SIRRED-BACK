@@ -5,17 +5,6 @@
 
     RewriteEngine On
 
-    # CORS Headers - Must be set at Apache level for OPTIONS preflight
-    Header always set Access-Control-Allow-Origin "https://sirred.clubatleticoimperial.com"
-    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, PATCH, OPTIONS"
-    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Accept, Origin"
-    Header always set Access-Control-Allow-Credentials "true"
-    Header always set Access-Control-Max-Age "3600"
-
-    # Handle preflight OPTIONS requests immediately
-    RewriteCond %{REQUEST_METHOD} OPTIONS
-    RewriteRule ^(.*)$ $1 [R=200,L]
-
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
