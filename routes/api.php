@@ -10,6 +10,7 @@ use App\Http\Controllers\CarreraController;
 use App\Http\Controllers\FacturacionController;
 use App\Http\Controllers\PublicController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\DashboardController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -23,6 +24,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+
+    // Dashboard
+    Route::get('dashboard/stats', [DashboardController::class, 'getStats']);
 
     Route::apiResource('users', UserController::class);
     Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword']);

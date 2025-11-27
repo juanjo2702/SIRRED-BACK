@@ -63,6 +63,9 @@ class FacturacionController extends Controller
 
     public function uploadFactura(Request $request, Facturacion $facturacion)
     {
+        // Eager load relationships
+        $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
+
         $request->validate([
             'factura' => 'required|file|mimes:pdf|max:2048' // 2MB max
         ]);
@@ -77,7 +80,8 @@ class FacturacionController extends Controller
         }
 
         $file = $request->file('factura');
-        $filename = $facturacion->docente->ci . '_' . $facturacion->corte->nombre . '.pdf';
+        $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
+        $filename = $facturacion->docente->ci . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
         $path = $file->storeAs('facturas', $filename, 'public');
 
         $facturacion->update([
