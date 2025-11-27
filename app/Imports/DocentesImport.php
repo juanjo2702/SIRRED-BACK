@@ -4,10 +4,12 @@ namespace App\Imports;
 
 use App\Models\Docente;
 use App\Models\Facturacion;
-use Maatwebsite\Excel\Concerns\ToModel;
+use Maatwebsite\Excel\Concerns\OnEachRow;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
+use Maatwebsite\Excel\Row;
 
-class DocentesImport implements ToModel, WithHeadingRow
+class DocentesImport implements OnEachRow, WithHeadingRow, WithChunkReading
 {
     protected $sedeCarreraId;
     protected $corteId;
@@ -20,18 +22,16 @@ class DocentesImport implements ToModel, WithHeadingRow
         $this->tipoContrato = $tipoContrato;
     }
 
-    /**
-    * @param array $row
-    *
-    * @return \Illuminate\Database\Eloquent\Model|null
-    */
-    public function model(array $row)
+    public function onRow(Row $row)
     {
+        $rowIndex = $row->getIndex();
+        $row      = $row->toArray();
+
         // Validate that CI exists and is not empty
         $ci = $row['ci'] ?? null;
         if (empty($ci)) {
             // Skip rows without CI
-            return null;
+            return;
         }
 
         // Map apellidos - try different possible column names
@@ -52,19 +52,31 @@ class DocentesImport implements ToModel, WithHeadingRow
             ]
         );
 
-        // Create facturacion record
-        Facturacion::create([
+        // Find or create facturacion record
+        $facturacion = Facturacion::firstOrNew([
             'docente_id' => $docente->id,
             'sede_carrera_id' => $this->sedeCarreraId,
             'corte_id' => $this->corteId,
             'tipo_contrato' => $this->tipoContrato,
-            'monto' => $row['liquido_pagable'] ?? 0,
-            'carga_horaria' => $row['carga_pagada'] ?? 0,
-            'fecha_subida' => null,
-            'factura_path' => null,
-            'estado_subida' => null
         ]);
 
-        return null; // We handle creation manually
+        $nuevoMonto = $row['liquido_pagable'] ?? 0;
+        $nuevaCarga = $row['carga_pagada'] ?? 0;
+
+        // Check if amount changed and reset status if it was approved
+        if ($facturacion->exists && $facturacion->monto != $nuevoMonto) {
+            if ($facturacion->estado_subida === 'APROBADO') {
+                $facturacion->estado_subida = 'SUBIDA';
+            }
+        }
+
+        $facturacion->monto = $nuevoMonto;
+        $facturacion->carga_horaria = $nuevaCarga;
+        $facturacion->save();
+    }
+
+    public function chunkSize(): int
+    {
+        return 100;
     }
 }
