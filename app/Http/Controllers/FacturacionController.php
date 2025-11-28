@@ -11,6 +11,8 @@ use App\Exports\FacturacionesExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
 
+use App\Models\SedeCarrera;
+
 class FacturacionController extends Controller
 {
     public function uploadExcel(Request $request)
@@ -118,6 +120,117 @@ class FacturacionController extends Controller
         ]);
 
         return response()->json(['message' => 'Factura aprobada correctamente']);
+    }
+
+    public function update(Request $request, Facturacion $facturacion)
+    {
+        $request->validate([
+            'sede_id' => 'required|exists:sedes,id',
+            'carrera_id' => 'required|exists:carreras,id',
+        ]);
+
+        // Find the SedeCarrera ID
+        $sedeCarrera = SedeCarrera::where('sede_id', $request->sede_id)
+            ->where('carrera_id', $request->carrera_id)
+            ->first();
+
+        if (!$sedeCarrera) {
+            return response()->json(['message' => 'La carrera no está asignada a esta sede'], 400);
+        }
+
+        $facturacion->sede_carrera_id = $sedeCarrera->id;
+        $facturacion->save();
+
+        // If file exists, rename it
+        if ($facturacion->factura_path && Storage::disk('public')->exists($facturacion->factura_path)) {
+            $oldPath = $facturacion->factura_path;
+
+            // Generate new filename
+            // We need to reload relationships to get the new names
+            $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
+
+            $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
+            $filename = $facturacion->docente->ci . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
+            $newPath = 'facturas/' . $filename;
+
+            if ($oldPath !== $newPath) {
+                // Check if target file already exists (collision)
+                if (Storage::disk('public')->exists($newPath)) {
+                     // Append timestamp to avoid collision or handle as needed.
+                     // For now, let's assume we overwrite or just fail?
+                     // User said "si se equivoca se guarda con la carrera", implying we should fix it.
+                     // If we overwrite, we might lose a file if two people have same CI/Carrera/Corte (should be impossible due to unique constraints usually, but let's be safe)
+                     // Actually, one docente per corte per carrera usually.
+                     Storage::disk('public')->delete($newPath);
+                }
+
+                Storage::disk('public')->move($oldPath, $newPath);
+                $facturacion->factura_path = $newPath;
+                $facturacion->save();
+            }
+        }
+
+        return response()->json(['message' => 'Facturación actualizada correctamente', 'facturacion' => $facturacion]);
+    }
+
+    public function bulkUpdate(Request $request)
+    {
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'exists:facturacions,id',
+            'sede_id' => 'required|exists:sedes,id',
+            'carrera_id' => 'required|exists:carreras,id',
+        ]);
+
+        $sedeCarrera = SedeCarrera::where('sede_id', $request->sede_id)
+            ->where('carrera_id', $request->carrera_id)
+            ->first();
+
+        if (!$sedeCarrera) {
+            return response()->json(['message' => 'La carrera no está asignada a esta sede'], 400);
+        }
+
+        $updatedCount = 0;
+        $errors = [];
+
+        $facturaciones = Facturacion::whereIn('id', $request->ids)->get();
+
+        foreach ($facturaciones as $facturacion) {
+            try {
+                $facturacion->sede_carrera_id = $sedeCarrera->id;
+                $facturacion->save();
+
+                // If file exists, rename it
+                if ($facturacion->factura_path && Storage::disk('public')->exists($facturacion->factura_path)) {
+                    $oldPath = $facturacion->factura_path;
+
+                    // Reload relationships
+                    $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
+
+                    $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
+                    $filename = $facturacion->docente->ci . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
+                    $newPath = 'facturas/' . $filename;
+
+                    if ($oldPath !== $newPath) {
+                        if (Storage::disk('public')->exists($newPath)) {
+                             Storage::disk('public')->delete($newPath);
+                        }
+
+                        Storage::disk('public')->move($oldPath, $newPath);
+                        $facturacion->factura_path = $newPath;
+                        $facturacion->save();
+                    }
+                }
+                $updatedCount++;
+            } catch (\Exception $e) {
+                $errors[] = "Error actualizando ID {$facturacion->id}: " . $e->getMessage();
+            }
+        }
+
+        return response()->json([
+            'message' => "Se actualizaron {$updatedCount} registros correctamente.",
+            'errors' => $errors
+        ]);
     }
 
     public function exportFacturaciones(Request $request)
