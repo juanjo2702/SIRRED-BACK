@@ -31,9 +31,16 @@ class FacturacionesExport implements FromCollection, WithHeadings, WithMapping, 
         $query = Facturacion::with(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte'])
             ->where('corte_id', $this->corteId);
 
-        // Filter by tipo_contrato if provided
+        // Filter by tipo_contrato - supports single value or comma-separated values
         if ($this->tipoContrato) {
-            $query->where('tipo_contrato', $this->tipoContrato);
+            if (str_contains($this->tipoContrato, ',')) {
+                // Multiple types separated by comma
+                $tipos = explode(',', $this->tipoContrato);
+                $query->whereIn('tipo_contrato', $tipos);
+            } else {
+                // Single type
+                $query->where('tipo_contrato', $this->tipoContrato);
+            }
         }
 
         if ($this->estadoSubida !== null && $this->estadoSubida !== 'null') {
