@@ -76,6 +76,11 @@ class FacturacionController extends Controller
             return response()->json(['message' => 'Solo tipo FACTURACION puede subir facturas'], 400);
         }
 
+        // Prevent replacing approved invoices
+        if ($facturacion->estado_subida === 'APROBADO') {
+            return response()->json(['message' => 'No se puede modificar una factura aprobada'], 400);
+        }
+
         // Delete old file if exists
         if ($facturacion->factura_path) {
             Storage::disk('public')->delete($facturacion->factura_path);
