@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Sede extends Model
 {
-    protected $fillable = ['nombre', 'estado'];
+    protected $fillable = ['nombre', 'estado', 'abreviacion'];
 
     public function sedeCarreras()
     {

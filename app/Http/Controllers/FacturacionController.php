@@ -88,7 +88,8 @@ class FacturacionController extends Controller
 
         $file = $request->file('factura');
         $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-        $filename = $facturacion->docente->ci . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
+        $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
+        $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
         $path = $file->storeAs('facturas', $filename, 'public');
 
         $facturacion->update([
@@ -155,7 +156,8 @@ class FacturacionController extends Controller
             $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
 
             $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-            $filename = $facturacion->docente->ci . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
+            $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
+            $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
             $newPath = 'facturas/' . $filename;
 
             if ($oldPath !== $newPath) {
@@ -213,7 +215,8 @@ class FacturacionController extends Controller
                     $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
 
                     $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-                    $filename = $facturacion->docente->ci . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
+                    $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
+                    $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
                     $newPath = 'facturas/' . $filename;
 
                     if ($oldPath !== $newPath) {

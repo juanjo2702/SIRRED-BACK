@@ -15,14 +15,22 @@ class SedeController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate(['nombre' => 'required', 'estado' => 'boolean']);
+        $validated = $request->validate([
+            'nombre' => 'required',
+            'estado' => 'boolean',
+            'abreviacion' => 'nullable|string|max:10'
+        ]);
         $sede = Sede::create($validated);
         return response()->json($sede, 201);
     }
 
     public function update(Request $request, Sede $sede)
     {
-        $validated = $request->validate(['nombre' => 'required', 'estado' => 'boolean']);
+        $validated = $request->validate([
+            'nombre' => 'required',
+            'estado' => 'boolean',
+            'abreviacion' => 'nullable|string|max:10'
+        ]);
         $sede->update($validated);
         return response()->json($sede);
     }
