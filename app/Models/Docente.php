@@ -7,7 +7,7 @@ use App\Models\Facturacion; // Added this use statement for Facturacion model
 
 class Docente extends Model
 {
-    protected $fillable = ['nombre', 'apellidos', 'ci', 'estado'];
+    protected $fillable = ['nombre', 'apellidos', 'ci', 'estado', 'tipo_compra'];
 
     public function facturacions()
     {

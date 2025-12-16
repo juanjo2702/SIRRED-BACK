@@ -11,6 +11,7 @@ use App\Http\Controllers\FacturacionController;
 use App\Http\Controllers\PublicController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DocenteController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -42,6 +43,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('sedes/{sede}/carreras/{carrera}', [SedeController::class, 'detachCarrera']);
 
     Route::apiResource('carreras', CarreraController::class);
+
+    // Docentes
+    Route::get('docentes', [DocenteController::class, 'index']);
+    Route::put('docentes/{docente}', [DocenteController::class, 'update']);
 
     Route::post('facturaciones/upload-excel', [FacturacionController::class, 'uploadExcel']);
     Route::get('facturaciones', [FacturacionController::class, 'getFacturaciones']);
