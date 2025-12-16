@@ -51,4 +51,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('facturaciones/{facturacion}', [FacturacionController::class, 'update']);
     Route::post('facturaciones/bulk-update', [FacturacionController::class, 'bulkUpdate']);
     Route::get('facturaciones/export', [FacturacionController::class, 'exportFacturaciones']);
+    Route::get('facturaciones/datos-extraidos', [FacturacionController::class, 'getDatosExtraidos']);
+    Route::get('facturaciones/export-datos-extraidos', [FacturacionController::class, 'exportDatosExtraidos']);
+    Route::get('facturaciones/rezagados', [FacturacionController::class, 'getRezagados']);
+    Route::get('facturaciones/export-rezagados', [FacturacionController::class, 'exportRezagados']);
+    Route::get('facturaciones/export-datos-rezagados', [FacturacionController::class, 'exportDatosRezagados']);
 });

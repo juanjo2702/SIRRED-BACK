@@ -6,12 +6,19 @@ use Illuminate\Http\Request;
 
 use App\Models\Facturacion;
 use App\Models\Corte;
+use App\Models\DatoFactura;
 use App\Imports\DocentesImport;
 use App\Exports\FacturacionesExport;
+use App\Exports\DatosFacturaExport;
+use App\Exports\RezagadosExport;
+use App\Exports\DatosRezagadosExport;
+use App\Services\PdfExtractorService;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
 
 use App\Models\SedeCarrera;
+use App\Services\RezagadoService;
+use App\Services\FacturaValidatorService;
 
 class FacturacionController extends Controller
 {
@@ -42,6 +49,9 @@ class FacturacionController extends Controller
 
     public function getFacturaciones(Request $request)
     {
+        // Marcar automáticamente como REZAGADO los registros de periodos cerrados
+        RezagadoService::marcarRezagadosAutomaticamente();
+
         $query = Facturacion::with(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte']);
 
         if ($request->corte_id) {
@@ -76,6 +86,18 @@ class FacturacionController extends Controller
             return response()->json(['message' => 'Solo tipo FACTURACION puede subir facturas'], 400);
         }
 
+        // Verificar si el periodo de facturación está abierto
+        // Excepción: si es REZAGADO, se permite subir (Opción B)
+        $corte = $facturacion->corte;
+        if (!$corte->isPeriodoFacturacionAbierto() && $facturacion->estado_subida !== 'REZAGADO') {
+            $fechaFin = $corte->fecha_fin_facturacion
+                ? $corte->fecha_fin_facturacion->format('d/m/Y')
+                : 'no definida';
+            return response()->json([
+                'message' => "El periodo de facturación ha cerrado. La fecha límite fue: {$fechaFin}. Contacte al administrador si necesita ayuda."
+            ], 400);
+        }
+
         // Prevent replacing approved invoices
         if ($facturacion->estado_subida === 'APROBADO') {
             return response()->json(['message' => 'No se puede modificar una factura aprobada'], 400);
@@ -92,13 +114,121 @@ class FacturacionController extends Controller
         $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
         $path = $file->storeAs('facturas', $filename, 'public');
 
+        // Incrementar contador de intentos
+        $intentos = ($facturacion->intentos_validacion ?? 0) + 1;
+
         $facturacion->update([
             'factura_path' => $path,
             'fecha_subida' => now(),
-            'estado_subida' => 'SUBIDA'
+            'estado_subida' => 'SUBIDA',
+            'intentos_validacion' => $intentos,
+            'errores_validacion' => null,
         ]);
 
-        return response()->json(['message' => 'Factura subida correctamente']);
+        // Extraer datos del PDF automáticamente
+        $datosExtraidos = null;
+        $validacionResult = null;
+        $estadoFinal = 'SUBIDA';
+        $erroresValidacion = [];
+
+        try {
+            $pdfExtractor = new PdfExtractorService();
+            $fullPath = Storage::disk('public')->path($path);
+            $result = $pdfExtractor->extractFromInvoice($fullPath);
+
+            if ($result['success'] && $result['data']) {
+                // Eliminar datos anteriores si existen
+                $facturacion->datoFactura()->delete();
+
+                // Guardar nuevos datos extraídos
+                $datosExtraidos = DatoFactura::create([
+                    'facturacion_id' => $facturacion->id,
+                    'nit_emisor' => $result['data']['nit_emisor'],
+                    'razon_social_emisor' => $result['data']['razon_social_emisor'],
+                    'nit_cliente' => $result['data']['nit_cliente'],
+                    'razon_social_cliente' => $result['data']['razon_social_cliente'],
+                    'numero_factura' => $result['data']['numero_factura'],
+                    'codigo_autorizacion' => $result['data']['codigo_autorizacion'],
+                    'fecha_factura' => $result['data']['fecha_factura'],
+                    'monto_total' => $result['data']['monto_total'],
+                    'texto_completo' => $result['data']['texto_completo'],
+                ]);
+
+                // Validación automática
+                $validator = new FacturaValidatorService();
+                $facturacion->load('corte'); // Reload corte for validation
+                $validacionResult = $validator->validar($facturacion, $datosExtraidos);
+
+                $estadoFinal = $validator->determinarEstado($validacionResult['valido'], $intentos);
+                $erroresValidacion = $validacionResult['errores'];
+            } else {
+                // No se pudo extraer datos - pasar a revisión manual después de 3 intentos
+                $erroresValidacion = ['No se pudieron extraer los datos del PDF. Verifique que el archivo sea legible.'];
+                $validator = new FacturaValidatorService();
+                $estadoFinal = $validator->determinarEstado(false, $intentos);
+            }
+        } catch (\Exception $e) {
+            // Si falla la extracción
+            $erroresValidacion = ['Error al procesar el PDF: ' . $e->getMessage()];
+            $validator = new FacturaValidatorService();
+            $estadoFinal = $validator->determinarEstado(false, $intentos);
+        }
+
+        // Actualizar estado final y errores
+        $facturacion->update([
+            'estado_subida' => $estadoFinal,
+            'errores_validacion' => !empty($erroresValidacion) ? $erroresValidacion : null,
+        ]);
+
+        // Preparar respuesta
+        $validator = new FacturaValidatorService();
+        $intentosRestantes = max(0, $validator->getMaxIntentos() - $intentos);
+
+        $response = [
+            'message' => $this->getMensajeEstado($estadoFinal, $erroresValidacion, $intentosRestantes),
+            'estado' => $estadoFinal,
+            'datos_extraidos' => $datosExtraidos,
+            'validacion' => [
+                'valido' => $validacionResult ? $validacionResult['valido'] : false,
+                'errores' => $erroresValidacion,
+                'intentos' => $intentos,
+                'intentos_restantes' => $intentosRestantes,
+            ],
+        ];
+
+        // Si hay errores y aún tiene intentos, devolver 422 para indicar error de validación
+        if (!empty($erroresValidacion) && $estadoFinal === 'RECHAZADO') {
+            return response()->json($response, 422);
+        }
+
+        return response()->json($response);
+    }
+
+    /**
+     * Genera el mensaje según el estado de la factura
+     */
+    private function getMensajeEstado(string $estado, array $errores, int $intentosRestantes): string
+    {
+        switch ($estado) {
+            case 'APROBADO':
+                return '✅ Factura aprobada automáticamente. Todos los datos son correctos.';
+
+            case 'RECHAZADO':
+                $mensaje = '❌ La factura tiene errores y fue rechazada.';
+                if ($intentosRestantes > 0) {
+                    $mensaje .= " Le quedan {$intentosRestantes} intento(s).";
+                }
+                return $mensaje;
+
+            case 'SUBIDA':
+                if (!empty($errores)) {
+                    return '⚠️ La factura fue subida pero requiere revisión manual debido a errores en la validación automática.';
+                }
+                return 'Factura subida correctamente. Pendiente de revisión.';
+
+            default:
+                return 'Factura procesada.';
+        }
     }
 
     public function denyFactura(Facturacion $facturacion)
@@ -262,4 +392,188 @@ class FacturacionController extends Controller
             $filename
         );
     }
+
+    /**
+     * Obtiene las facturaciones con sus datos extraídos del PDF
+     */
+    public function getDatosExtraidos(Request $request)
+    {
+        $query = Facturacion::with(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte', 'datoFactura'])
+            ->whereNotNull('factura_path')
+            ->whereHas('datoFactura');
+
+        if ($request->corte_id) {
+            $query->where('corte_id', $request->corte_id);
+        }
+
+        $facturaciones = $query->orderBy('updated_at', 'desc')->get();
+
+        // Filter to only include those uploaded within the period
+        if ($request->corte_id) {
+            $corte = Corte::find($request->corte_id);
+            if ($corte && $corte->fecha_fin_facturacion) {
+                $fechaFinFacturacion = $corte->fecha_fin_facturacion->endOfDay();
+                $facturaciones = $facturaciones->filter(function ($f) use ($fechaFinFacturacion) {
+                    if (!$f->fecha_subida) return true;
+                    return $f->fecha_subida <= $fechaFinFacturacion;
+                })->values();
+            }
+        }
+
+        return response()->json($facturaciones->map(function ($f) {
+            return [
+                'id' => $f->id,
+                'docente' => [
+                    'ci' => $f->docente?->ci,
+                    'nombre' => $f->docente?->nombre,
+                    'apellidos' => $f->docente?->apellidos,
+                ],
+                'sede' => $f->sedeCarrera?->sede?->nombre,
+                'carrera' => $f->sedeCarrera?->carrera?->nombre,
+                'corte' => $f->corte?->nombre,
+                'monto_excel' => $f->monto,
+                'factura_path' => $f->factura_path,
+                'estado_subida' => $f->estado_subida,
+                'datos_extraidos' => $f->datoFactura ? [
+                    'nit_emisor' => $f->datoFactura->nit_emisor,
+                    'razon_social' => $f->datoFactura->razon_social_emisor,
+                    'numero_factura' => $f->datoFactura->numero_factura,
+                    'codigo_autorizacion' => $f->datoFactura->codigo_autorizacion,
+                    'fecha_factura' => $f->datoFactura->fecha_factura?->format('d/m/Y'),
+                    'monto_extraido' => $f->datoFactura->monto_total,
+                ] : null,
+            ];
+        })->values());
+    }
+
+    /**
+     * Exporta los datos extraídos de las facturas a Excel
+     */
+    public function exportDatosExtraidos(Request $request)
+    {
+        $corteId = $request->corte_id;
+        $sedeNombre = $request->sede_nombre;
+        $carreraNombre = $request->carrera_nombre;
+
+        // Get corte name for filename
+        $corte = Corte::find($corteId);
+        $corteName = $corte ? str_replace(' ', '_', $corte->nombre) : 'Corte';
+
+        // Generate filename with date
+        $date = date('Y-m-d_His');
+        $filename = "DatosFacturas_{$corteName}_{$date}.xlsx";
+
+        return Excel::download(
+            new DatosFacturaExport($corteId, $sedeNombre, $carreraNombre),
+            $filename
+        );
+    }
+
+    /**
+     * Obtiene las facturaciones que subieron factura después del periodo (rezagados que sí subieron)
+     */
+    public function getRezagados(Request $request)
+    {
+        try {
+            if (!$request->corte_id) {
+                return response()->json([]);
+            }
+
+            $corte = Corte::find($request->corte_id);
+
+            if (!$corte) {
+                return response()->json([]);
+            }
+
+            // If no facturation period configured, return empty (no "late" uploads possible)
+            if (!$corte->fecha_fin_facturacion) {
+                return response()->json([]);
+            }
+
+            $fechaFinFacturacion = \Carbon\Carbon::parse($corte->fecha_fin_facturacion)->endOfDay();
+
+            $facturaciones = Facturacion::with(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte', 'datoFactura'])
+                ->where('corte_id', $request->corte_id)
+                ->where('tipo_contrato', 'FACTURACION')
+                ->whereNotNull('factura_path')
+                ->whereNotNull('fecha_subida')
+                ->get()
+                ->filter(function ($f) use ($fechaFinFacturacion) {
+                    $fechaSubida = \Carbon\Carbon::parse($f->fecha_subida);
+                    return $fechaSubida->gt($fechaFinFacturacion);
+                });
+
+            return response()->json($facturaciones->map(function ($f) {
+            return [
+                'id' => $f->id,
+                'docente' => [
+                    'ci' => $f->docente?->ci,
+                    'nombre' => $f->docente?->nombre,
+                    'apellidos' => $f->docente?->apellidos,
+                ],
+                'sede' => $f->sedeCarrera?->sede?->nombre,
+                'carrera' => $f->sedeCarrera?->carrera?->nombre,
+                'corte' => $f->corte?->nombre,
+                'monto_excel' => $f->monto,
+                'factura_path' => $f->factura_path,
+                'fecha_subida' => $f->fecha_subida ? \Carbon\Carbon::parse($f->fecha_subida)->format('d/m/Y H:i') : null,
+                'datos_extraidos' => $f->datoFactura ? [
+                    'nit_emisor' => $f->datoFactura->nit_emisor,
+                    'razon_social' => $f->datoFactura->razon_social_emisor,
+                    'numero_factura' => $f->datoFactura->numero_factura,
+                    'codigo_autorizacion' => $f->datoFactura->codigo_autorizacion,
+                    'fecha_factura' => $f->datoFactura->fecha_factura ? \Carbon\Carbon::parse($f->datoFactura->fecha_factura)->format('d/m/Y') : null,
+                    'monto_extraido' => $f->datoFactura->monto_total,
+                ] : null,
+            ];
+        })->values());
+        } catch (\Exception $e) {
+            return response()->json([]);
+        }
+    }
+
+    /**
+     * Exporta la lista de rezagados a Excel
+     */
+    public function exportRezagados(Request $request)
+    {
+        $corteId = $request->corte_id;
+
+        // Get corte name for filename
+        $corte = Corte::find($corteId);
+        $corteName = $corte ? str_replace(' ', '_', $corte->nombre) : 'Todos';
+
+        // Generate filename with date
+        $date = date('Y-m-d_His');
+        $filename = "Rezagados_{$corteName}_{$date}.xlsx";
+
+        return Excel::download(
+            new RezagadosExport($corteId),
+            $filename
+        );
+    }
+
+    /**
+     * Exporta los datos extraídos de facturas de rezagados que subieron tarde
+     */
+    public function exportDatosRezagados(Request $request)
+    {
+        $corteId = $request->corte_id;
+        $sedeNombre = $request->sede_nombre;
+        $carreraNombre = $request->carrera_nombre;
+
+        // Get corte name for filename
+        $corte = Corte::find($corteId);
+        $corteName = $corte ? str_replace(' ', '_', $corte->nombre) : 'Corte';
+
+        // Generate filename with date
+        $date = date('Y-m-d_His');
+        $filename = "DatosRezagados_{$corteName}_{$date}.xlsx";
+
+        return Excel::download(
+            new DatosRezagadosExport($corteId, $sedeNombre, $carreraNombre),
+            $filename
+        );
+    }
 }
+
