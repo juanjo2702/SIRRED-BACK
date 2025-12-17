@@ -8,10 +8,6 @@ use App\Models\Facturacion;
 use App\Models\Corte;
 use App\Models\DatoFactura;
 use App\Imports\DocentesImport;
-use App\Exports\FacturacionesExport;
-use App\Exports\DatosFacturaExport;
-use App\Exports\RezagadosExport;
-use App\Exports\DatosRezagadosExport;
 use App\Services\PdfExtractorService;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
@@ -20,8 +16,18 @@ use App\Models\SedeCarrera;
 use App\Services\RezagadoService;
 use App\Services\FacturaValidatorService;
 
+/**
+ * Controlador principal de Facturaciones
+ * Maneja CRUD, importación Excel, upload de PDFs y aprobación/denegación
+ *
+ * Para exportaciones: ver FacturaExportController
+ * Para rezagados: ver RezagadoController
+ */
 class FacturacionController extends Controller
 {
+    /**
+     * Importa docentes y facturaciones desde archivo Excel
+     */
     public function uploadExcel(Request $request)
     {
         $request->validate([
@@ -47,12 +53,15 @@ class FacturacionController extends Controller
         return response()->json(['message' => 'Datos importados correctamente']);
     }
 
+    /**
+     * Lista todas las facturaciones con filtros
+     */
     public function getFacturaciones(Request $request)
     {
         // Marcar automáticamente como REZAGADO los registros de periodos cerrados
         RezagadoService::marcarRezagadosAutomaticamente();
 
-        $query = Facturacion::with(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte']);
+        $query = Facturacion::with(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte', 'datoFactura']);
 
         if ($request->corte_id) {
             $query->where('corte_id', $request->corte_id);
@@ -73,6 +82,9 @@ class FacturacionController extends Controller
         return $query->get();
     }
 
+    /**
+     * Sube una factura PDF y la valida automáticamente
+     */
     public function uploadFactura(Request $request, Facturacion $facturacion)
     {
         // Eager load relationships
@@ -152,6 +164,7 @@ class FacturacionController extends Controller
                     'fecha_factura' => $result['data']['fecha_factura'],
                     'monto_total' => $result['data']['monto_total'],
                     'texto_completo' => $result['data']['texto_completo'],
+                    'qr_url' => $result['data']['qr_url'] ?? null,
                 ]);
 
                 // Validación automática
@@ -231,6 +244,9 @@ class FacturacionController extends Controller
         }
     }
 
+    /**
+     * Deniega una factura
+     */
     public function denyFactura(Facturacion $facturacion)
     {
         if ($facturacion->factura_path) {
@@ -245,6 +261,9 @@ class FacturacionController extends Controller
         return response()->json(['message' => 'Factura denegada']);
     }
 
+    /**
+     * Aprueba una factura manualmente
+     */
     public function approveFactura(Facturacion $facturacion)
     {
         if ($facturacion->estado_subida !== 'SUBIDA') {
@@ -258,6 +277,9 @@ class FacturacionController extends Controller
         return response()->json(['message' => 'Factura aprobada correctamente']);
     }
 
+    /**
+     * Actualiza la sede/carrera de una facturación
+     */
     public function update(Request $request, Facturacion $facturacion)
     {
         $request->validate([
@@ -282,7 +304,6 @@ class FacturacionController extends Controller
             $oldPath = $facturacion->factura_path;
 
             // Generate new filename
-            // We need to reload relationships to get the new names
             $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
 
             $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
@@ -291,14 +312,8 @@ class FacturacionController extends Controller
             $newPath = 'facturas/' . $filename;
 
             if ($oldPath !== $newPath) {
-                // Check if target file already exists (collision)
                 if (Storage::disk('public')->exists($newPath)) {
-                     // Append timestamp to avoid collision or handle as needed.
-                     // For now, let's assume we overwrite or just fail?
-                     // User said "si se equivoca se guarda con la carrera", implying we should fix it.
-                     // If we overwrite, we might lose a file if two people have same CI/Carrera/Corte (should be impossible due to unique constraints usually, but let's be safe)
-                     // Actually, one docente per corte per carrera usually.
-                     Storage::disk('public')->delete($newPath);
+                    Storage::disk('public')->delete($newPath);
                 }
 
                 Storage::disk('public')->move($oldPath, $newPath);
@@ -310,6 +325,9 @@ class FacturacionController extends Controller
         return response()->json(['message' => 'Facturación actualizada correctamente', 'facturacion' => $facturacion]);
     }
 
+    /**
+     * Actualiza sede/carrera de múltiples facturaciones
+     */
     public function bulkUpdate(Request $request)
     {
         $request->validate([
@@ -351,7 +369,7 @@ class FacturacionController extends Controller
 
                     if ($oldPath !== $newPath) {
                         if (Storage::disk('public')->exists($newPath)) {
-                             Storage::disk('public')->delete($newPath);
+                            Storage::disk('public')->delete($newPath);
                         }
 
                         Storage::disk('public')->move($oldPath, $newPath);
@@ -371,28 +389,6 @@ class FacturacionController extends Controller
         ]);
     }
 
-    public function exportFacturaciones(Request $request)
-    {
-        $corteId = $request->corte_id;
-        $tipoContrato = $request->tipo_contrato;
-        $estadoSubida = $request->estado_subida;
-        $sedeNombre = $request->sede_nombre;
-        $carreraNombre = $request->carrera_nombre;
-
-        // Get corte name for filename
-        $corte = Corte::find($corteId);
-        $corteName = $corte ? str_replace(' ', '_', $corte->nombre) : 'Corte';
-
-        // Generate filename with date
-        $date = date('Y-m-d_His');
-        $filename = "Facturas_{$corteName}_{$date}.xlsx";
-
-        return Excel::download(
-            new FacturacionesExport($corteId, $tipoContrato, $estadoSubida, $sedeNombre, $carreraNombre),
-            $filename
-        );
-    }
-
     /**
      * Obtiene las facturaciones con sus datos extraídos del PDF
      */
@@ -404,21 +400,19 @@ class FacturacionController extends Controller
 
         if ($request->corte_id) {
             $query->where('corte_id', $request->corte_id);
-        }
 
-        $facturaciones = $query->orderBy('updated_at', 'desc')->get();
-
-        // Filter to only include those uploaded within the period
-        if ($request->corte_id) {
+            // Filtrar en SQL: solo facturas subidas dentro del periodo
             $corte = Corte::find($request->corte_id);
             if ($corte && $corte->fecha_fin_facturacion) {
                 $fechaFinFacturacion = $corte->fecha_fin_facturacion->endOfDay();
-                $facturaciones = $facturaciones->filter(function ($f) use ($fechaFinFacturacion) {
-                    if (!$f->fecha_subida) return true;
-                    return $f->fecha_subida <= $fechaFinFacturacion;
-                })->values();
+                $query->where(function ($q) use ($fechaFinFacturacion) {
+                    $q->whereNull('fecha_subida')
+                        ->orWhere('fecha_subida', '<=', $fechaFinFacturacion);
+                });
             }
         }
+
+        $facturaciones = $query->orderBy('updated_at', 'desc')->get();
 
         return response()->json($facturaciones->map(function ($f) {
             return [
@@ -445,135 +439,4 @@ class FacturacionController extends Controller
             ];
         })->values());
     }
-
-    /**
-     * Exporta los datos extraídos de las facturas a Excel
-     */
-    public function exportDatosExtraidos(Request $request)
-    {
-        $corteId = $request->corte_id;
-        $sedeNombre = $request->sede_nombre;
-        $carreraNombre = $request->carrera_nombre;
-
-        // Get corte name for filename
-        $corte = Corte::find($corteId);
-        $corteName = $corte ? str_replace(' ', '_', $corte->nombre) : 'Corte';
-
-        // Generate filename with date
-        $date = date('Y-m-d_His');
-        $filename = "DatosFacturas_{$corteName}_{$date}.xlsx";
-
-        return Excel::download(
-            new DatosFacturaExport($corteId, $sedeNombre, $carreraNombre),
-            $filename
-        );
-    }
-
-    /**
-     * Obtiene las facturaciones que subieron factura después del periodo (rezagados que sí subieron)
-     */
-    public function getRezagados(Request $request)
-    {
-        try {
-            if (!$request->corte_id) {
-                return response()->json([]);
-            }
-
-            $corte = Corte::find($request->corte_id);
-
-            if (!$corte) {
-                return response()->json([]);
-            }
-
-            // If no facturation period configured, return empty (no "late" uploads possible)
-            if (!$corte->fecha_fin_facturacion) {
-                return response()->json([]);
-            }
-
-            $fechaFinFacturacion = \Carbon\Carbon::parse($corte->fecha_fin_facturacion)->endOfDay();
-
-            $facturaciones = Facturacion::with(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte', 'datoFactura'])
-                ->where('corte_id', $request->corte_id)
-                ->where('tipo_contrato', 'FACTURACION')
-                ->whereNotNull('factura_path')
-                ->whereNotNull('fecha_subida')
-                ->get()
-                ->filter(function ($f) use ($fechaFinFacturacion) {
-                    $fechaSubida = \Carbon\Carbon::parse($f->fecha_subida);
-                    return $fechaSubida->gt($fechaFinFacturacion);
-                });
-
-            return response()->json($facturaciones->map(function ($f) {
-            return [
-                'id' => $f->id,
-                'docente' => [
-                    'ci' => $f->docente?->ci,
-                    'nombre' => $f->docente?->nombre,
-                    'apellidos' => $f->docente?->apellidos,
-                ],
-                'sede' => $f->sedeCarrera?->sede?->nombre,
-                'carrera' => $f->sedeCarrera?->carrera?->nombre,
-                'corte' => $f->corte?->nombre,
-                'monto_excel' => $f->monto,
-                'factura_path' => $f->factura_path,
-                'fecha_subida' => $f->fecha_subida ? \Carbon\Carbon::parse($f->fecha_subida)->format('d/m/Y H:i') : null,
-                'datos_extraidos' => $f->datoFactura ? [
-                    'nit_emisor' => $f->datoFactura->nit_emisor,
-                    'razon_social' => $f->datoFactura->razon_social_emisor,
-                    'numero_factura' => $f->datoFactura->numero_factura,
-                    'codigo_autorizacion' => $f->datoFactura->codigo_autorizacion,
-                    'fecha_factura' => $f->datoFactura->fecha_factura ? \Carbon\Carbon::parse($f->datoFactura->fecha_factura)->format('d/m/Y') : null,
-                    'monto_extraido' => $f->datoFactura->monto_total,
-                ] : null,
-            ];
-        })->values());
-        } catch (\Exception $e) {
-            return response()->json([]);
-        }
-    }
-
-    /**
-     * Exporta la lista de rezagados a Excel
-     */
-    public function exportRezagados(Request $request)
-    {
-        $corteId = $request->corte_id;
-
-        // Get corte name for filename
-        $corte = Corte::find($corteId);
-        $corteName = $corte ? str_replace(' ', '_', $corte->nombre) : 'Todos';
-
-        // Generate filename with date
-        $date = date('Y-m-d_His');
-        $filename = "Rezagados_{$corteName}_{$date}.xlsx";
-
-        return Excel::download(
-            new RezagadosExport($corteId),
-            $filename
-        );
-    }
-
-    /**
-     * Exporta los datos extraídos de facturas de rezagados que subieron tarde
-     */
-    public function exportDatosRezagados(Request $request)
-    {
-        $corteId = $request->corte_id;
-        $sedeNombre = $request->sede_nombre;
-        $carreraNombre = $request->carrera_nombre;
-
-        // Get corte name for filename
-        $corte = Corte::find($corteId);
-        $corteName = $corte ? str_replace(' ', '_', $corte->nombre) : 'Corte';
-
-        // Generate filename with date
-        $date = date('Y-m-d_His');
-        $filename = "DatosRezagados_{$corteName}_{$date}.xlsx";
-
-        return Excel::download(
-            new DatosRezagadosExport($corteId, $sedeNombre, $carreraNombre),
-            $filename
-        );
-    }
 }
-

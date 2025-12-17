@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Smalot\PdfParser\Parser;
+use Zxing\QrReader;
 use Exception;
 
 class PdfExtractorService
@@ -26,6 +27,9 @@ class PdfExtractorService
             $pdf = $this->parser->parseFile($filePath);
             $text = $pdf->getText();
 
+            // Intentar extraer QR URL
+            $qrUrl = $this->extractQrUrl($pdf);
+
             return [
                 'success' => true,
                 'data' => [
@@ -38,6 +42,7 @@ class PdfExtractorService
                     'fecha_factura' => $this->extractFecha($text),
                     'monto_total' => $this->extractMontoTotal($text),
                     'texto_completo' => $text,
+                    'qr_url' => $qrUrl,
                 ],
             ];
         } catch (Exception $e) {
@@ -47,6 +52,72 @@ class PdfExtractorService
                 'data' => null,
             ];
         }
+    }
+
+    /**
+     * Extrae la URL del código QR del PDF
+     * Intenta encontrar imágenes embebidas y decodificar el QR
+     */
+    protected function extractQrUrl($pdf): ?string
+    {
+        try {
+            // Obtener todas las páginas del PDF
+            $pages = $pdf->getPages();
+
+            foreach ($pages as $page) {
+                // Obtener objetos XObject (imágenes) de la página
+                $xObjects = $page->getXObjects();
+
+                foreach ($xObjects as $xObject) {
+                    // Verificar si es una imagen
+                    if (method_exists($xObject, 'getContent')) {
+                        $imageContent = $xObject->getContent();
+
+                        if (!empty($imageContent)) {
+                            // Crear archivo temporal para la imagen
+                            $tempFile = tempnam(sys_get_temp_dir(), 'qr_') . '.png';
+
+                            // Intentar detectar el tipo de imagen y convertir
+                            $image = @imagecreatefromstring($imageContent);
+
+                            if ($image !== false) {
+                                // Guardar como PNG
+                                imagepng($image, $tempFile);
+                                imagedestroy($image);
+
+                                // Intentar leer el QR
+                                try {
+                                    $qrReader = new QrReader($tempFile);
+                                    $qrText = $qrReader->text();
+
+                                    // Limpiar archivo temporal
+                                    @unlink($tempFile);
+
+                                    // Si encontramos texto que parece una URL, retornar
+                                    if ($qrText && (
+                                        strpos($qrText, 'http') === 0 ||
+                                        strpos($qrText, 'www.') === 0 ||
+                                        strpos($qrText, 'impuestos') !== false
+                                    )) {
+                                        return $qrText;
+                                    }
+                                } catch (Exception $e) {
+                                    // Continuar con la siguiente imagen
+                                    @unlink($tempFile);
+                                }
+                            } else {
+                                @unlink($tempFile);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // Si falla la extracción del QR, no es crítico
+            // Solo registramos y continuamos
+        }
+
+        return null;
     }
 
     /**

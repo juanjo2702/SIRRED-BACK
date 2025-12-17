@@ -19,6 +19,7 @@ class DatoFactura extends Model
         'fecha_factura',
         'monto_total',
         'texto_completo',
+        'qr_url',
     ];
 
     protected $casts = [
