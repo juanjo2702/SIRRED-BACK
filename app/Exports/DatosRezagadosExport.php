@@ -32,7 +32,8 @@ class DatosRezagadosExport implements FromCollection, WithHeadings, WithMapping,
         $query = DatoFactura::with(['facturacion.docente', 'facturacion.sedeCarrera.sede', 'facturacion.sedeCarrera.carrera', 'facturacion.corte'])
             ->whereHas('facturacion', function ($q) {
                 $q->where('corte_id', $this->corteId)
-                    ->where('tipo_contrato', 'FACTURACION');
+                    ->where('tipo_contrato', 'FACTURACION')
+                    ->where('estado_subida', 'APROBADO'); // Solo exportar rezagados aprobados
             });
 
         $datos = $query->get();

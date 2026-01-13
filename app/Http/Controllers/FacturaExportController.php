@@ -51,8 +51,21 @@ class FacturaExportController extends Controller
         $corte = Corte::find($corteId);
         $corteName = $corte ? str_replace(' ', '_', $corte->nombre) : 'Corte';
 
-        $date = date('Y-m-d_His');
-        $filename = "DatosFacturas_{$corteName}_{$date}.xlsx";
+        // Construir nombre descriptivo del archivo
+        $nameParts = ['Aprobados', $corteName];
+
+        if ($sedeNombre) {
+            $nameParts[] = str_replace(' ', '_', $sedeNombre);
+        }
+
+        if ($carreraNombre) {
+            $nameParts[] = str_replace(' ', '_', $carreraNombre);
+        }
+
+        $date = date('Y-m-d');
+        $nameParts[] = $date;
+
+        $filename = implode('_', $nameParts) . '.xlsx';
 
         return Excel::download(
             new DatosFacturaExport($corteId, $sedeNombre, $carreraNombre),

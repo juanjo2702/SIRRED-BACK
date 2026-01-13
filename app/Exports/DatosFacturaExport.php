@@ -32,7 +32,8 @@ class DatosFacturaExport implements FromCollection, WithHeadings, WithMapping, W
         $query = DatoFactura::with(['facturacion.docente', 'facturacion.sedeCarrera.sede', 'facturacion.sedeCarrera.carrera', 'facturacion.corte'])
             ->whereHas('facturacion', function ($q) {
                 $q->where('corte_id', $this->corteId)
-                    ->where('tipo_contrato', 'FACTURACION');
+                    ->where('tipo_contrato', 'FACTURACION')
+                    ->where('estado_subida', 'APROBADO'); // Solo exportar facturas aprobadas
             });
 
         $datos = $query->get();
@@ -165,8 +166,46 @@ class DatosFacturaExport implements FromCollection, WithHeadings, WithMapping, W
 
     public function styles(Worksheet $sheet)
     {
+        // Establecer anchos de columna apropiados
+        $columnWidths = [
+            'A' => 5,   // No
+            'B' => 15,  // NIT
+            'C' => 35,  // Razón Social Proveedor
+            'D' => 45,  // Código Autorización
+            'E' => 12,  // Número Factura
+            'F' => 8,   // Número (siempre 1)
+            'G' => 14,  // Fecha
+            'H' => 15,  // Importe Total Compra
+            'I' => 12,  // Importe
+            'J' => 10,  // IEHD
+            'K' => 10,  // IPJ
+            'L' => 10,  // TASAS
+            'M' => 15,  // Otros No Sujeto
+            'N' => 12,  // Exentos
+            'O' => 10,  // Tasas
+            'P' => 12,  // Subtotal
+            'Q' => 14,  // Desctos/Bonif
+            'R' => 12,  // GIFT CARD
+            'S' => 18,  // Importe Base Crédito
+            'T' => 14,  // Crédito Fiscal
+            'U' => 12,  // Tipo Compra
+            'V' => 16,  // Código de Control
+        ];
+
+        foreach ($columnWidths as $column => $width) {
+            $sheet->getColumnDimension($column)->setWidth($width);
+        }
+
+        // Estilo del encabezado
         return [
-            1 => ['font' => ['bold' => true, 'size' => 10]],
+            1 => [
+                'font' => ['bold' => true, 'size' => 10, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '4A235A'] // Color púrpura similar al sistema
+                ],
+                'alignment' => ['horizontal' => 'center', 'vertical' => 'center'],
+            ],
         ];
     }
 }
