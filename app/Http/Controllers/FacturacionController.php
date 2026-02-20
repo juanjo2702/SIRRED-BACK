@@ -126,14 +126,10 @@ class FacturacionController extends Controller
         $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
         $path = $file->storeAs('facturas', $filename, 'public');
 
-        // Incrementar contador de intentos
-        $intentos = ($facturacion->intentos_validacion ?? 0) + 1;
-
         $facturacion->update([
             'factura_path' => $path,
             'fecha_subida' => now(),
             'estado_subida' => 'SUBIDA',
-            'intentos_validacion' => $intentos,
             'errores_validacion' => null,
         ]);
 
@@ -172,44 +168,58 @@ class FacturacionController extends Controller
                 $facturacion->load('corte'); // Reload corte for validation
                 $validacionResult = $validator->validar($facturacion, $datosExtraidos);
 
-                $estadoFinal = $validator->determinarEstado($validacionResult['valido'], $intentos);
+                $estadoFinal = $validator->determinarEstado($validacionResult['valido']);
                 $erroresValidacion = $validacionResult['errores'];
             } else {
-                // No se pudo extraer datos - pasar a revisión manual después de 3 intentos
+                // No se pudo extraer datos
                 $erroresValidacion = ['No se pudieron extraer los datos del PDF. Verifique que el archivo sea legible.'];
                 $validator = new FacturaValidatorService();
-                $estadoFinal = $validator->determinarEstado(false, $intentos);
+                $estadoFinal = $validator->determinarEstado(false);
             }
         } catch (\Exception $e) {
             // Si falla la extracción
             $erroresValidacion = ['Error al procesar el PDF: ' . $e->getMessage()];
             $validator = new FacturaValidatorService();
-            $estadoFinal = $validator->determinarEstado(false, $intentos);
+            $estadoFinal = $validator->determinarEstado(false);
         }
 
         // Actualizar estado final y errores
+        // Guardamos los detalles completos para mostrar feedback visual persistente
+        $detallesGuardar = null;
+        if ($validacionResult && isset($validacionResult['detalles'])) {
+            $detallesGuardar = $validacionResult['detalles'];
+        } elseif (!empty($erroresValidacion)) {
+            $detallesGuardar = $erroresValidacion;
+        }
+
+        // Si fue rechazado, eliminamos el archivo físico para forzar nueva subida
+        if ($estadoFinal === 'RECHAZADO') {
+            if ($facturacion->factura_path) {
+                Storage::disk('public')->delete($facturacion->factura_path);
+            }
+            $facturacion->factura_path = null;
+        }
+
         $facturacion->update([
             'estado_subida' => $estadoFinal,
-            'errores_validacion' => !empty($erroresValidacion) ? $erroresValidacion : null,
+            'errores_validacion' => $detallesGuardar,
+            'factura_path' => $facturacion->factura_path,
         ]);
 
         // Preparar respuesta
-        $validator = new FacturaValidatorService();
-        $intentosRestantes = max(0, $validator->getMaxIntentos() - $intentos);
-
         $response = [
-            'message' => $this->getMensajeEstado($estadoFinal, $erroresValidacion, $intentosRestantes),
+            'message' => $this->getMensajeEstado($estadoFinal, $erroresValidacion),
             'estado' => $estadoFinal,
             'datos_extraidos' => $datosExtraidos,
             'validacion' => [
                 'valido' => $validacionResult ? $validacionResult['valido'] : false,
                 'errores' => $erroresValidacion,
-                'intentos' => $intentos,
-                'intentos_restantes' => $intentosRestantes,
+                'detalles' => $validacionResult ? ($validacionResult['detalles'] ?? []) : []
             ],
+            'facturacion' => $facturacion,
         ];
 
-        // Si hay errores y aún tiene intentos, devolver 422 para indicar error de validación
+        // Si hay errores de validación, devolver 422
         if (!empty($erroresValidacion) && $estadoFinal === 'RECHAZADO') {
             return response()->json($response, 422);
         }
@@ -220,18 +230,14 @@ class FacturacionController extends Controller
     /**
      * Genera el mensaje según el estado de la factura
      */
-    private function getMensajeEstado(string $estado, array $errores, int $intentosRestantes): string
+    private function getMensajeEstado(string $estado, array $errores): string
     {
         switch ($estado) {
             case 'APROBADO':
                 return '✅ Factura aprobada automáticamente. Todos los datos son correctos.';
 
             case 'RECHAZADO':
-                $mensaje = '❌ La factura tiene errores y fue rechazada.';
-                if ($intentosRestantes > 0) {
-                    $mensaje .= " Le quedan {$intentosRestantes} intento(s).";
-                }
-                return $mensaje;
+                return '❌ La factura tiene errores. Por favor, corrija su factura y vuelva a subirla.';
 
             case 'SUBIDA':
                 if (!empty($errores)) {

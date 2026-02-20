@@ -8,14 +8,21 @@ use App\Models\Corte;
 
 class CorteController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return Corte::orderBy('fecha_inicio', 'desc')->get();
+        $query = Corte::with('gestion')->orderBy('fecha_inicio', 'desc');
+
+        if ($request->has('gestion_id')) {
+            $query->where('gestion_id', $request->gestion_id);
+        }
+
+        return $query->get();
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'gestion_id' => 'required|exists:gestions,id',
             'nombre' => 'required',
             'fecha_inicio' => 'required|date',
             'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
@@ -23,6 +30,8 @@ class CorteController extends Controller
             'fecha_inicio_facturacion' => 'nullable|date',
             'fecha_fin_facturacion' => 'nullable|date|after_or_equal:fecha_inicio_facturacion',
         ], [
+            'gestion_id.required' => 'La gestión es obligatoria',
+            'gestion_id.exists' => 'La gestión seleccionada no es válida',
             'nombre.required' => 'El nombre del corte es obligatorio',
             'fecha_inicio.required' => 'La fecha de inicio es obligatoria',
             'fecha_inicio.date' => 'La fecha de inicio debe ser una fecha válida',
@@ -34,6 +43,9 @@ class CorteController extends Controller
         ]);
 
         if ($validated['estado']) {
+            // Deactivate other cortes in the SAME gestion? Or globally?
+            // "Solo un corte activo a la vez" usually implies global context for the active period to upload invoices.
+            // PROPOSAL: The system should enforce only one active corte globally to avoid ambiguity in public search.
             Corte::where('estado', 1)->update(['estado' => 0]);
         }
 

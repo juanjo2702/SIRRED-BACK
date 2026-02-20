@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\GestionController;
 use App\Http\Controllers\CorteController;
 use App\Http\Controllers\SedeController;
 use App\Http\Controllers\CarreraController;
@@ -38,6 +39,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('roles', [RoleController::class, 'index']);
 
+    Route::apiResource('gestiones', GestionController::class);
     Route::apiResource('cortes', CorteController::class);
 
     Route::apiResource('sedes', SedeController::class);

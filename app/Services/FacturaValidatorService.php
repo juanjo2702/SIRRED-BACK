@@ -19,8 +19,7 @@ class FacturaValidatorService
         'UNIVERSIDAD TÉCNICA PRIVADA COSMOS'
     ];
 
-    // Número máximo de intentos antes de pasar a revisión manual
-    const MAX_INTENTOS = 3;
+
 
     /**
      * Valida los datos extraídos de la factura
@@ -35,92 +34,131 @@ class FacturaValidatorService
     public function validar(Facturacion $facturacion, DatoFactura $datoFactura): array
     {
         $errores = [];
+        $detalles = [];
 
-        // 1. Validar NIT del CLIENTE (debe ser UNITEPC)
-        $errorNit = $this->validarNitCliente($datoFactura->nit_cliente);
-        if ($errorNit) {
-            $errores[] = $errorNit;
+        // 1. Validar NIT del CLIENTE
+        $resNit = $this->validarNitCliente($datoFactura->nit_cliente);
+        $detalles[] = $resNit;
+        if ($resNit['estado'] === 'error') {
+            $errores[] = $resNit['mensaje'];
         }
 
-        // 2. Validar Razón Social del CLIENTE (debe ser UNITEPC)
-        $errorRazonSocial = $this->validarRazonSocialCliente($datoFactura->razon_social_cliente);
-        if ($errorRazonSocial) {
-            $errores[] = $errorRazonSocial;
+        // 2. Validar Razón Social del CLIENTE
+        $resRazon = $this->validarRazonSocialCliente($datoFactura->razon_social_cliente);
+        $detalles[] = $resRazon;
+        if ($resRazon['estado'] === 'error') {
+            $errores[] = $resRazon['mensaje'];
         }
 
-        // 3. Validar Fecha de Factura dentro del periodo
-        $errorFecha = $this->validarFechaEnPeriodo($datoFactura->fecha_factura, $facturacion->corte);
-        if ($errorFecha) {
-            $errores[] = $errorFecha;
+        // 3. Validar Fecha de Factura
+        $resFecha = $this->validarFechaEnPeriodo($datoFactura->fecha_factura, $facturacion->corte);
+        $detalles[] = $resFecha;
+        if ($resFecha['estado'] === 'error') {
+            $errores[] = $resFecha['mensaje'];
         }
 
-        // 4. Validar Monto coincide
-        $errorMonto = $this->validarMonto($datoFactura->monto_total, $facturacion->monto);
-        if ($errorMonto) {
-            $errores[] = $errorMonto;
+        // 4. Validar Monto
+        $resMonto = $this->validarMonto($datoFactura->monto_total, $facturacion->monto);
+        $detalles[] = $resMonto;
+        if ($resMonto['estado'] === 'error') {
+            $errores[] = $resMonto['mensaje'];
         }
 
         return [
             'valido' => empty($errores),
             'errores' => $errores,
+            'detalles' => $detalles
         ];
     }
 
     /**
      * Valida que el NIT del CLIENTE sea el de UNITEPC
      */
-    protected function validarNitCliente(?string $nit): ?string
+    protected function validarNitCliente(?string $nit): array
     {
+        $titulo = "NIT del Cliente (UNITEPC)";
+
         if (!$nit) {
-            return "No se pudo extraer el NIT del cliente de la factura. Verifique que la factura esté emitida a nombre de UNITEPC.";
+            return [
+                'titulo' => $titulo,
+                'mensaje' => "No se pudo extraer el NIT. Verifique que la factura sea legible.",
+                'estado' => 'error'
+            ];
         }
 
-        // Limpiar el NIT (quitar espacios, guiones, etc.)
+        // Limpiar el NIT
         $nitLimpio = preg_replace('/[^0-9]/', '', $nit);
 
         if ($nitLimpio !== self::NIT_UNITEPC) {
-            return "El NIT del cliente en la factura ({$nit}) no es correcto. Debe facturar al NIT " . self::NIT_UNITEPC . " (UNITEPC).";
+            return [
+                'titulo' => $titulo,
+                'mensaje' => "El NIT ({$nit}) no coincide con UNITEPC (" . self::NIT_UNITEPC . ").",
+                'estado' => 'error'
+            ];
         }
 
-        return null;
+        return [
+            'titulo' => $titulo,
+            'mensaje' => "NIT correcto: {$nit}",
+            'estado' => 'ok'
+        ];
     }
 
     /**
      * Valida que la razón social del CLIENTE sea UNITEPC o variantes
      */
-    protected function validarRazonSocialCliente(?string $razonSocial): ?string
+    protected function validarRazonSocialCliente(?string $razonSocial): array
     {
+        $titulo = "Razón Social del Cliente";
+
         if (!$razonSocial) {
-            return "No se pudo extraer el Nombre/Razón Social del cliente de la factura.";
+            return [
+                'titulo' => $titulo,
+                'mensaje' => "No se pudo extraer la Razón Social.",
+                'estado' => 'error'
+            ];
         }
 
-        // Normalizar para comparación (mayúsculas, sin acentos extra)
         $razonSocialNormalizada = mb_strtoupper(trim($razonSocial));
 
         foreach (self::RAZONES_SOCIALES_VALIDAS as $razonValida) {
             if (strpos($razonSocialNormalizada, $razonValida) !== false) {
-                return null; // Es válida
+                return [
+                    'titulo' => $titulo,
+                    'mensaje' => "Razón Social correcta: {$razonValida}",
+                    'estado' => 'ok'
+                ];
             }
         }
 
-        return "El Nombre/Razón Social del cliente ({$razonSocial}) debe ser 'UNITEPC' o 'Universidad Técnica Privada Cosmos'.";
+        return [
+            'titulo' => $titulo,
+            'mensaje' => "La Razón Social ({$razonSocial}) no es válida. Debe ser UNITEPC.",
+            'estado' => 'error'
+        ];
     }
 
     /**
      * Valida que la fecha de factura esté dentro del periodo de facturación
      */
-    protected function validarFechaEnPeriodo($fechaFactura, ?Corte $corte): ?string
+    protected function validarFechaEnPeriodo($fechaFactura, ?Corte $corte): array
     {
+        $titulo = "Fecha de Emisión";
+
         if (!$fechaFactura) {
-            return "No se pudo extraer la fecha de la factura.";
+            return [
+                'titulo' => $titulo,
+                'mensaje' => "No se pudo extraer la fecha de la factura.",
+                'estado' => 'error'
+            ];
         }
 
-        if (!$corte) {
-            return null; // Sin corte, no podemos validar
-        }
-
-        if (!$corte->fecha_inicio_facturacion || !$corte->fecha_fin_facturacion) {
-            return null; // Sin periodo definido, no podemos validar
+        if (!$corte || !$corte->fecha_inicio_facturacion || !$corte->fecha_fin_facturacion) {
+            return [
+                'titulo' => $titulo,
+                'mensaje' => "No se pudo verificar el periodo de facturación.",
+                'estado' => 'error' // O warning si prefieres no bloquear
+            ];
         }
 
         $fecha = Carbon::parse($fechaFactura)->startOfDay();
@@ -128,60 +166,67 @@ class FacturaValidatorService
         $fechaFin = Carbon::parse($corte->fecha_fin_facturacion)->endOfDay();
 
         if ($fecha->lt($fechaInicio) || $fecha->gt($fechaFin)) {
-            return "La fecha de la factura (" . $fecha->format('d/m/Y') . ") debe estar entre " .
-                   $fechaInicio->format('d/m/Y') . " y " . $fechaFin->format('d/m/Y') . ".";
+            return [
+                'titulo' => $titulo,
+                'mensaje' => "La fecha ({$fecha->format('d/m/Y')}) está fuera del periodo ({$fechaInicio->format('d/m/Y')} - {$fechaFin->format('d/m/Y')}).",
+                'estado' => 'error'
+            ];
         }
 
-        return null;
+        return [
+            'titulo' => $titulo,
+            'mensaje' => "Fecha válida: {$fecha->format('d/m/Y')}",
+            'estado' => 'ok'
+        ];
     }
 
     /**
      * Valida que el monto de la factura coincida con el monto esperado
      */
-    protected function validarMonto($montoFactura, $montoEsperado): ?string
+    protected function validarMonto($montoFactura, $montoEsperado): array
     {
+        $titulo = "Monto Total";
+
         if (!$montoFactura) {
-            return "No se pudo extraer el monto de la factura.";
+            return [
+                'titulo' => $titulo,
+                'mensaje' => "No se pudo extraer el monto.",
+                'estado' => 'error'
+            ];
         }
 
         if (!$montoEsperado) {
-            return null; // Sin monto esperado, no podemos validar
+            return [
+                'titulo' => $titulo,
+                'mensaje' => "No hay monto esperado definido.",
+                'estado' => 'ok' // Asumimos ok si no hay contra qué validar
+            ];
         }
 
-        // Convertir a float para comparación
         $montoFacturaFloat = floatval($montoFactura);
         $montoEsperadoFloat = floatval($montoEsperado);
 
         // Comparar con tolerancia de 0.01 (por redondeos)
         if (abs($montoFacturaFloat - $montoEsperadoFloat) > 0.01) {
-            return "El monto de la factura (Bs " . number_format($montoFacturaFloat, 2) .
-                   ") no coincide con el monto esperado (Bs " . number_format($montoEsperadoFloat, 2) . ").";
+            return [
+                'titulo' => $titulo,
+                'mensaje' => "El monto (Bs " . number_format($montoFacturaFloat, 2) . ") no coincide con el esperado (Bs " . number_format($montoEsperadoFloat, 2) . ").",
+                'estado' => 'error'
+            ];
         }
 
-        return null;
+        return [
+            'titulo' => $titulo,
+            'mensaje' => "Monto correcto: Bs " . number_format($montoFacturaFloat, 2),
+            'estado' => 'ok'
+        ];
     }
 
     /**
-     * Determina el estado final basado en la validación e intentos
+     * Determina el estado final basado en la validación
      */
-    public function determinarEstado(bool $valido, int $intentos): string
+    public function determinarEstado(bool $valido): string
     {
-        if ($valido) {
-            return 'APROBADO';
-        }
-
-        if ($intentos >= self::MAX_INTENTOS) {
-            return 'SUBIDA'; // Pendiente de revisión manual
-        }
-
-        return 'RECHAZADO';
-    }
-
-    /**
-     * Retorna el número máximo de intentos
-     */
-    public function getMaxIntentos(): int
-    {
-        return self::MAX_INTENTOS;
+        return $valido ? 'APROBADO' : 'RECHAZADO';
     }
 }

@@ -8,6 +8,7 @@ use Carbon\Carbon;
 class Corte extends Model
 {
     protected $fillable = [
+        'gestion_id',
         'nombre',
         'fecha_inicio',
         'fecha_fin',
@@ -22,6 +23,11 @@ class Corte extends Model
         'fecha_inicio_facturacion' => 'date',
         'fecha_fin_facturacion' => 'date',
     ];
+
+    public function gestion()
+    {
+        return $this->belongsTo(Gestion::class);
+    }
 
     public function facturacions()
     {
@@ -93,4 +99,3 @@ class Corte extends Model
         return $ahora->diffInDays($fin);
     }
 }
-
