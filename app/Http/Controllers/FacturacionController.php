@@ -7,11 +7,12 @@ use Illuminate\Http\Request;
 use App\Models\Facturacion;
 use App\Models\Corte;
 use App\Imports\DocentesImport;
+use App\Imports\DocentesPracticaImport;
 use App\Exports\FacturacionesExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
-
 use App\Models\SedeCarrera;
+use App\Exports\TemplatePracticasExport;
 
 class FacturacionController extends Controller
 {
@@ -23,7 +24,7 @@ class FacturacionController extends Controller
             'file' => 'required|file|mimes:xlsx,xls'
         ]);
 
-        $corteActivo = Corte::where('estado', 1)->first();
+        $corteActivo = Corte::where('estado', 1)->where('tipo_corte', 'REGULAR')->first();
         if (!$corteActivo) {
             return response()->json(['message' => 'No hay corte activo'], 400);
         }
@@ -38,6 +39,34 @@ class FacturacionController extends Controller
         );
 
         return response()->json(['message' => 'Datos importados correctamente']);
+    }
+
+    public function uploadExcelPracticas(Request $request)
+    {
+        $request->validate([
+            'sede_carrera_id' => 'required|exists:sede_carreras,id',
+            'file' => 'required|file|mimes:xlsx,xls'
+        ]);
+
+        $corteActivo = Corte::where('estado', 1)->where('tipo_corte', 'PRACTICA')->first();
+        if (!$corteActivo) {
+            return response()->json(['message' => 'No hay corte de prácticas activo'], 400);
+        }
+
+        Excel::import(
+            new DocentesPracticaImport(
+                $request->sede_carrera_id,
+                $corteActivo->id
+            ),
+            $request->file('file')
+        );
+
+        return response()->json(['message' => 'Datos de prácticas importados correctamente']);
+    }
+
+    public function downloadTemplatePracticas()
+    {
+        return Excel::download(new TemplatePracticasExport, 'Plantilla_Practicas.xlsx');
     }
 
     public function getFacturaciones(Request $request)
@@ -58,6 +87,12 @@ class FacturacionController extends Controller
             } else {
                 $query->where('estado_subida', $request->estado_subida);
             }
+        }
+
+        if ($request->has('es_practica')) {
+            $query->where('es_practica', filter_var($request->es_practica, FILTER_VALIDATE_BOOLEAN));
+        } else {
+            $query->where('es_practica', false);
         }
 
         return $query->get();

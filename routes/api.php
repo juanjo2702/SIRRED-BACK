@@ -17,6 +17,7 @@ Route::post('/login', [AuthController::class, 'login']);
 // Public routes (no auth required)
 Route::get('/public/search', [PublicController::class, 'searchByCI']);
 Route::post('/public/facturaciones/{facturacion}/upload', [FacturacionController::class, 'uploadFactura']);
+Route::get('/public/template-practicas', [FacturacionController::class, 'downloadTemplatePracticas']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -35,7 +36,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('roles', [RoleController::class, 'index']);
 
     Route::apiResource('cortes', CorteController::class);
-
     Route::apiResource('sedes', SedeController::class);
     Route::post('sedes/{sede}/carreras', [SedeController::class, 'attachCarrera']);
     Route::post('sedes/{sede}/sync-carreras', [SedeController::class, 'syncCarreras']);
@@ -44,6 +44,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('carreras', CarreraController::class);
 
     Route::post('facturaciones/upload-excel', [FacturacionController::class, 'uploadExcel']);
+    Route::post('facturaciones/upload-excel-practicas', [FacturacionController::class, 'uploadExcelPracticas']);
     Route::get('facturaciones', [FacturacionController::class, 'getFacturaciones']);
     Route::post('facturaciones/{facturacion}/upload-factura', [FacturacionController::class, 'uploadFactura']);
     Route::post('facturaciones/{facturacion}/deny', [FacturacionController::class, 'denyFactura']);

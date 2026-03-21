@@ -13,9 +13,9 @@ class PublicController extends Controller
     {
         $request->validate(['ci' => 'required']);
 
-        $corteActivo = Corte::where('estado', 1)->first();
+        $cortesActivos = Corte::where('estado', 1)->get();
 
-        if (!$corteActivo) {
+        if ($cortesActivos->isEmpty()) {
             return response()->json(['message' => 'No hay ningún corte activo en este momento'], 404);
         }
 
@@ -25,18 +25,25 @@ class PublicController extends Controller
             return response()->json(['message' => 'No se encontró información para este CI'], 404);
         }
 
+        $cortesIds = $cortesActivos->pluck('id');
+
         $facturaciones = $docente->facturacions()
             ->with(['sedeCarrera.sede', 'sedeCarrera.carrera', 'corte'])
-            ->where('corte_id', $corteActivo->id)
+            ->whereIn('corte_id', $cortesIds)
             ->get();
 
         if ($facturaciones->isEmpty()) {
             return response()->json(['message' => 'No hay registros para este docente en el corte activo'], 404);
         }
 
+        $cortesConFacturas = $facturaciones->pluck('corte_id')->unique()->toArray();
+        $cortesReales = $cortesActivos->filter(function($corte) use ($cortesConFacturas) {
+            return in_array($corte->id, $cortesConFacturas);
+        })->values();
+
         return response()->json([
             'docente' => $docente,
-            'corte_activo' => $corteActivo,
+            'cortes_activos' => $cortesReales,
             'facturaciones' => $facturaciones
         ]);
     }

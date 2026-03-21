@@ -8,7 +8,8 @@ class Facturacion extends Model
 {
     protected $fillable = [
         'docente_id', 'sede_carrera_id', 'corte_id', 'tipo_contrato',
-        'monto', 'carga_horaria', 'fecha_subida', 'factura_path', 'estado_subida'
+        'monto', 'carga_horaria', 'fecha_subida', 'factura_path', 'estado_subida',
+        'es_practica', 'fecha_inicio_practica', 'fecha_fin_practica', 'materia_practica', 'hospital_practica'
     ];
 
     public function docente()

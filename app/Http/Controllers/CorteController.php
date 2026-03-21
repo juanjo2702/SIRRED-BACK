@@ -8,9 +8,15 @@ use App\Models\Corte;
 
 class CorteController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return Corte::orderBy('fecha_inicio', 'desc')->get();
+        $query = Corte::orderBy('fecha_inicio', 'desc');
+        if ($request->has('tipo_corte')) {
+            $query->where('tipo_corte', $request->tipo_corte);
+        } else {
+            $query->where('tipo_corte', 'REGULAR');
+        }
+        return $query->get();
     }
 
     public function store(Request $request)
@@ -20,6 +26,7 @@ class CorteController extends Controller
             'fecha_inicio' => 'required|date',
             'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
             'estado' => 'required|boolean',
+            'tipo_corte' => 'nullable|string|in:REGULAR,PRACTICA',
         ], [
             'nombre.required' => 'El nombre del corte es obligatorio',
             'fecha_inicio.required' => 'La fecha de inicio es obligatoria',
@@ -29,7 +36,8 @@ class CorteController extends Controller
         ]);
 
         if ($validated['estado']) {
-            Corte::where('estado', 1)->update(['estado' => 0]);
+            $tipo = $validated['tipo_corte'] ?? 'REGULAR';
+            Corte::where('estado', 1)->where('tipo_corte', $tipo)->update(['estado' => 0]);
         }
 
         $corte = Corte::create($validated);
@@ -43,6 +51,7 @@ class CorteController extends Controller
             'fecha_inicio' => 'required|date',
             'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
             'estado' => 'required|boolean',
+            'tipo_corte' => 'nullable|string|in:REGULAR,PRACTICA',
         ], [
             'nombre.required' => 'El nombre del corte es obligatorio',
             'fecha_inicio.required' => 'La fecha de inicio es obligatoria',
@@ -52,7 +61,8 @@ class CorteController extends Controller
         ]);
 
         if ($validated['estado'] && !$corte->estado) {
-            Corte::where('estado', 1)->update(['estado' => 0]);
+            $tipo = $validated['tipo_corte'] ?? 'REGULAR';
+            Corte::where('estado', 1)->where('tipo_corte', $tipo)->update(['estado' => 0]);
         }
 
         $corte->update($validated);
