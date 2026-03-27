@@ -45,18 +45,23 @@ class FacturacionController extends Controller
     {
         $request->validate([
             'sede_carrera_id' => 'required|exists:sede_carreras,id',
-            'file' => 'required|file|mimes:xlsx,xls'
+            'corte_id'        => 'required|exists:cortes,id',
+            'file'            => 'required|file|mimes:xlsx,xls'
         ]);
 
-        $corteActivo = Corte::where('estado', 1)->where('tipo_corte', 'PRACTICA')->first();
-        if (!$corteActivo) {
-            return response()->json(['message' => 'No hay corte de prácticas activo'], 400);
+        $corte = Corte::where('id', $request->corte_id)
+            ->where('estado', 1)
+            ->where('tipo_corte', 'PRACTICA')
+            ->first();
+
+        if (!$corte) {
+            return response()->json(['message' => 'El corte seleccionado no es un corte de prácticas activo'], 400);
         }
 
         Excel::import(
             new DocentesPracticaImport(
                 $request->sede_carrera_id,
-                $corteActivo->id
+                $corte->id
             ),
             $request->file('file')
         );

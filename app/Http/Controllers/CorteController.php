@@ -37,7 +37,10 @@ class CorteController extends Controller
 
         if ($validated['estado']) {
             $tipo = $validated['tipo_corte'] ?? 'REGULAR';
-            Corte::where('estado', 1)->where('tipo_corte', $tipo)->update(['estado' => 0]);
+            // Solo para REGULAR se mantiene la restricción de un único corte activo
+            if ($tipo === 'REGULAR') {
+                Corte::where('estado', 1)->where('tipo_corte', 'REGULAR')->update(['estado' => 0]);
+            }
         }
 
         $corte = Corte::create($validated);
@@ -62,7 +65,10 @@ class CorteController extends Controller
 
         if ($validated['estado'] && !$corte->estado) {
             $tipo = $validated['tipo_corte'] ?? 'REGULAR';
-            Corte::where('estado', 1)->where('tipo_corte', $tipo)->update(['estado' => 0]);
+            // Solo para REGULAR se mantiene la restricción de un único corte activo
+            if ($tipo === 'REGULAR') {
+                Corte::where('estado', 1)->where('tipo_corte', 'REGULAR')->update(['estado' => 0]);
+            }
         }
 
         $corte->update($validated);
