@@ -57,11 +57,18 @@ class DocentesPracticaImport implements OnEachRow, WithStartRow, WithChunkReadin
         );
 
         // Find or create facturacion record
+        // Include materia, hospital, and dates in the key so each unique
+        // practice assignment (different hospital, subject, or dates) gets
+        // its own record instead of overwriting the previous one.
         $facturacion = Facturacion::firstOrNew([
             'docente_id' => $docente->id,
             'sede_carrera_id' => $this->sedeCarreraId,
             'corte_id' => $this->corteId,
             'es_practica' => true,
+            'materia_practica' => $materia,
+            'hospital_practica' => $hospital,
+            'fecha_inicio_practica' => $fechaInicio,
+            'fecha_fin_practica' => $fechaFin,
         ]);
 
         if ($facturacion->exists && $facturacion->monto != $monto) {
