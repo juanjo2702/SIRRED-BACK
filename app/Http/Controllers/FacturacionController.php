@@ -9,12 +9,14 @@ use App\Models\Corte;
 use App\Models\DatoFactura;
 use App\Imports\DocentesImport;
 use App\Services\PdfExtractorService;
+use App\Imports\DocentesPracticaImport;
+use App\Exports\FacturacionesExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
-
 use App\Models\SedeCarrera;
 use App\Services\RezagadoService;
 use App\Services\FacturaValidatorService;
+use App\Exports\TemplatePracticasExport;
 
 /**
  * Controlador principal de Facturaciones
@@ -36,7 +38,7 @@ class FacturacionController extends Controller
             'file' => 'required|file|mimes:xlsx,xls'
         ]);
 
-        $corteActivo = Corte::where('estado', 1)->first();
+        $corteActivo = Corte::where('estado', 1)->where('tipo_corte', 'REGULAR')->first();
         if (!$corteActivo) {
             return response()->json(['message' => 'No hay corte activo'], 400);
         }
@@ -56,6 +58,38 @@ class FacturacionController extends Controller
     /**
      * Lista todas las facturaciones con filtros
      */
+    public function uploadExcelPracticas(Request $request)
+    {
+        $request->validate([
+            'sede_carrera_id' => 'required|exists:sede_carreras,id',
+            'corte_id'        => 'required|exists:cortes,id',
+            'file'            => 'required|file|mimes:xlsx,xls'
+        ]);
+
+        $corte = Corte::where('id', $request->corte_id)
+            ->where('estado', 1)
+            ->where('tipo_corte', 'PRACTICA')
+            ->first();
+
+        if (!$corte) {
+            return response()->json(['message' => 'El corte seleccionado no es un corte de prácticas activo'], 400);
+        }
+
+        Excel::import(
+            new DocentesPracticaImport(
+                $request->sede_carrera_id,
+                $corte->id
+            ),
+            $request->file('file')
+        );
+
+        return response()->json(['message' => 'Datos de prácticas importados correctamente']);
+    }
+
+    public function downloadTemplatePracticas()
+    {
+        return Excel::download(new TemplatePracticasExport, 'Plantilla_Practicas.xlsx');
+    }
     public function getFacturaciones(Request $request)
     {
         // Marcar automáticamente como REZAGADO los registros de periodos cerrados
@@ -77,6 +111,12 @@ class FacturacionController extends Controller
             } else {
                 $query->where('estado_subida', $request->estado_subida);
             }
+        }
+
+        if ($request->has('es_practica')) {
+            $query->where('es_practica', filter_var($request->es_practica, FILTER_VALIDATE_BOOLEAN));
+        } else {
+            $query->where('es_practica', false);
         }
 
         return $query->get();

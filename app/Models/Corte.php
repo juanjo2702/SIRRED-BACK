@@ -14,7 +14,8 @@ class Corte extends Model
         'fecha_fin',
         'estado',
         'fecha_inicio_facturacion',
-        'fecha_fin_facturacion'
+        'fecha_fin_facturacion',
+        'tipo_corte'
     ];
 
     protected $casts = [

@@ -16,6 +16,11 @@ class CorteController extends Controller
             $query->where('gestion_id', $request->gestion_id);
         }
 
+        if ($request->has('tipo_corte')) {
+            $query->where('tipo_corte', $request->tipo_corte);
+        } else {
+            $query->where('tipo_corte', 'REGULAR');
+        }
         return $query->get();
     }
 
@@ -29,6 +34,7 @@ class CorteController extends Controller
             'estado' => 'required|boolean',
             'fecha_inicio_facturacion' => 'nullable|date',
             'fecha_fin_facturacion' => 'nullable|date|after_or_equal:fecha_inicio_facturacion',
+            'tipo_corte' => 'nullable|string|in:REGULAR,PRACTICA',
         ], [
             'gestion_id.required' => 'La gestión es obligatoria',
             'gestion_id.exists' => 'La gestión seleccionada no es válida',
@@ -43,10 +49,11 @@ class CorteController extends Controller
         ]);
 
         if ($validated['estado']) {
-            // Deactivate other cortes in the SAME gestion? Or globally?
-            // "Solo un corte activo a la vez" usually implies global context for the active period to upload invoices.
-            // PROPOSAL: The system should enforce only one active corte globally to avoid ambiguity in public search.
-            Corte::where('estado', 1)->update(['estado' => 0]);
+            $tipo = $validated['tipo_corte'] ?? 'REGULAR';
+            // Solo para REGULAR se mantiene la restricción de un único corte activo
+            if ($tipo === 'REGULAR') {
+                Corte::where('estado', 1)->where('tipo_corte', 'REGULAR')->update(['estado' => 0]);
+            }
         }
 
         $corte = Corte::create($validated);
@@ -62,6 +69,7 @@ class CorteController extends Controller
             'estado' => 'required|boolean',
             'fecha_inicio_facturacion' => 'nullable|date',
             'fecha_fin_facturacion' => 'nullable|date|after_or_equal:fecha_inicio_facturacion',
+            'tipo_corte' => 'nullable|string|in:REGULAR,PRACTICA',
         ], [
             'nombre.required' => 'El nombre del corte es obligatorio',
             'fecha_inicio.required' => 'La fecha de inicio es obligatoria',
@@ -74,7 +82,11 @@ class CorteController extends Controller
         ]);
 
         if ($validated['estado'] && !$corte->estado) {
-            Corte::where('estado', 1)->update(['estado' => 0]);
+            $tipo = $validated['tipo_corte'] ?? 'REGULAR';
+            // Solo para REGULAR se mantiene la restricción de un único corte activo
+            if ($tipo === 'REGULAR') {
+                Corte::where('estado', 1)->where('tipo_corte', 'REGULAR')->update(['estado' => 0]);
+            }
         }
 
         $corte->update($validated);

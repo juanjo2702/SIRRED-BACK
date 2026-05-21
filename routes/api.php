@@ -22,6 +22,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/public/search', [PublicController::class, 'searchByCI']);
 Route::post('/public/facturaciones/{facturacion}/upload', [FacturacionController::class, 'uploadFactura'])
     ->middleware('throttle:5,1'); // Máximo 5 intentos por minuto por IP
+Route::get('/public/template-practicas', [FacturacionController::class, 'downloadTemplatePracticas']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -41,7 +42,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('gestiones', GestionController::class);
     Route::apiResource('cortes', CorteController::class);
-
     Route::apiResource('sedes', SedeController::class);
     Route::post('sedes/{sede}/carreras', [SedeController::class, 'attachCarrera']);
     Route::post('sedes/{sede}/sync-carreras', [SedeController::class, 'syncCarreras']);
@@ -55,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Facturaciones - Core CRUD
     Route::post('facturaciones/upload-excel', [FacturacionController::class, 'uploadExcel']);
+    Route::post('facturaciones/upload-excel-practicas', [FacturacionController::class, 'uploadExcelPracticas']);
     Route::get('facturaciones', [FacturacionController::class, 'getFacturaciones']);
     Route::post('facturaciones/{facturacion}/upload-factura', [FacturacionController::class, 'uploadFactura']);
     Route::post('facturaciones/{facturacion}/deny', [FacturacionController::class, 'denyFactura']);
