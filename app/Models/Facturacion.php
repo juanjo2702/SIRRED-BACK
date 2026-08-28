@@ -12,6 +12,12 @@ class Facturacion extends Model
         'es_practica', 'fecha_inicio_practica', 'fecha_fin_practica', 'materia_practica', 'hospital_practica'
     ];
 
+    protected $casts = [
+        'monto' => 'float',
+        'carga_horaria' => 'float',
+        'es_practica' => 'boolean',
+    ];
+
     public function docente()
     {
         return $this->belongsTo(Docente::class);

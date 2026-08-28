@@ -87,8 +87,8 @@ class DashboardController extends Controller
         $resumen = [
             'total_facturaciones' => (clone $queryFacturacion)->count(), // SOLO FACTURACION
             'total_docentes' => $totalDocentes, // GLOBAL
-            'monto_total' => (clone $queryAll)->sum('monto'), // GLOBAL
-            'carga_horaria_total' => (clone $queryAll)->sum('carga_horaria'), // GLOBAL
+            'monto_total' => round((float) (clone $queryAll)->sum('monto'), 2), // GLOBAL
+            'carga_horaria_total' => round((float) (clone $queryAll)->sum('carga_horaria'), 2), // GLOBAL
             'facturas_pendientes' => (clone $queryFacturacion)->whereNull('estado_subida')->count(),
             'facturas_aprobadas' => (clone $queryFacturacion)->where('estado_subida', 'APROBADO')->count(),
             'facturas_subidas' => (clone $queryFacturacion)->where('estado_subida', 'SUBIDA')->count(),
