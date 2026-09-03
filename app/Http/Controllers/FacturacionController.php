@@ -127,9 +127,7 @@ class FacturacionController extends Controller
         }
 
         $file = $request->file('factura');
-        $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-        $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
-        $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
+        $filename = $this->generateFacturaFilename($facturacion);
         $path = $file->storeAs('facturas', $filename, 'public');
 
         $facturacion->update([
@@ -192,22 +190,12 @@ class FacturacionController extends Controller
             $oldPath = $facturacion->factura_path;
 
             // Generate new filename
-            // We need to reload relationships to get the new names
-            $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
-
-            $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-            $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
-            $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
+            $filename = $this->generateFacturaFilename($facturacion);
             $newPath = 'facturas/' . $filename;
 
             if ($oldPath !== $newPath) {
                 // Check if target file already exists (collision)
                 if (Storage::disk('public')->exists($newPath)) {
-                     // Append timestamp to avoid collision or handle as needed.
-                     // For now, let's assume we overwrite or just fail?
-                     // User said "si se equivoca se guarda con la carrera", implying we should fix it.
-                     // If we overwrite, we might lose a file if two people have same CI/Carrera/Corte (should be impossible due to unique constraints usually, but let's be safe)
-                     // Actually, one docente per corte per carrera usually.
                      Storage::disk('public')->delete($newPath);
                 }
 
@@ -250,13 +238,7 @@ class FacturacionController extends Controller
                 // If file exists, rename it
                 if ($facturacion->factura_path && Storage::disk('public')->exists($facturacion->factura_path)) {
                     $oldPath = $facturacion->factura_path;
-
-                    // Reload relationships
-                    $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
-
-                    $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-                    $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
-                    $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
+                    $filename = $this->generateFacturaFilename($facturacion);
                     $newPath = 'facturas/' . $filename;
 
                     if ($oldPath !== $newPath) {
@@ -301,5 +283,28 @@ class FacturacionController extends Controller
             new FacturacionesExport($corteId, $tipoContrato, $estadoSubida, $sedeNombre, $carreraNombre),
             $filename
         );
+    }
+
+    /**
+     * Generar el nombre de archivo estandarizado para el PDF de la factura:
+     * {GESTION}_{CI}_{SEDE}_{CARRERA}_{CORTE}.pdf
+     * Si no tiene gestión asociada, mantiene {CI}_{SEDE}_{CARRERA}_{CORTE}.pdf
+     */
+    private function generateFacturaFilename(Facturacion $facturacion): string
+    {
+        $facturacion->loadMissing(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte.gestion']);
+
+        $ci = $facturacion->docente->ci ?? 'SIN_CI';
+        $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id ?? 'SEDE';
+        $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre ?? 'CARRERA');
+        $corteNombre = str_replace(' ', '_', $facturacion->corte->nombre ?? 'CORTE');
+
+        $gestionPrefix = '';
+        if ($facturacion->corte && $facturacion->corte->gestion && !empty($facturacion->corte->gestion->nombre)) {
+            $gestionClean = str_replace(['/', ' '], ['-', '_'], trim($facturacion->corte->gestion->nombre));
+            $gestionPrefix = $gestionClean . '_';
+        }
+
+        return $gestionPrefix . $ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $corteNombre . '.pdf';
     }
 }
