@@ -20,6 +20,8 @@ Route::get('/public/search', [PublicController::class, 'searchByCI']);
 Route::post('/public/facturaciones/{facturacion}/upload', [FacturacionController::class, 'uploadFactura']);
 Route::get('/public/template-practicas', [FacturacionController::class, 'downloadTemplatePracticas']);
 Route::get('/public/gestiones', [GestionController::class, 'publicIndex']);
+Route::get('/public/gestiones/activa/cortes', [GestionController::class, 'getActivaConCortes']);
+Route::get('/public/gestion-activa/cortes', [GestionController::class, 'getActivaConCortes']);
 Route::get('/public/gestiones/{id}/cortes', [GestionController::class, 'getCortes']);
 Route::get('/public/gestiones/nombre/{nombre}/cortes', [GestionController::class, 'getCortesByNombre']);
 

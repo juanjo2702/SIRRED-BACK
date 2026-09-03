@@ -39,6 +39,39 @@ class GestionController extends Controller
     }
 
     /**
+     * API: Obtener la gestión activa actual con todos sus cortes (fecha_inicio y fecha_fin)
+     */
+    public function getActivaConCortes(Request $request)
+    {
+        $gestion = Gestion::where('estado', 1)->orderBy('id', 'desc')->first();
+
+        if (!$gestion) {
+            return response()->json(['message' => 'No hay ninguna gestión activa actualmente'], 404);
+        }
+
+        $query = $gestion->cortes()
+            ->select('id', 'gestion_id', 'nombre', 'tipo_corte', 'fecha_inicio', 'fecha_fin', 'estado')
+            ->orderBy('fecha_inicio', 'asc');
+
+        if ($request->has('tipo_corte')) {
+            $query->where('tipo_corte', $request->tipo_corte);
+        }
+
+        $cortes = $query->get();
+
+        return response()->json([
+            'gestion' => [
+                'id' => $gestion->id,
+                'nombre' => $gestion->nombre,
+                'descripcion' => $gestion->descripcion,
+                'estado' => $gestion->estado,
+            ],
+            'total_cortes' => $cortes->count(),
+            'cortes' => $cortes
+        ]);
+    }
+
+    /**
      * Crear una nueva gestión
      */
     public function store(Request $request)
