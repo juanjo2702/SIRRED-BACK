@@ -6,7 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 
 class Corte extends Model
 {
-    protected $fillable = ['nombre', 'fecha_inicio', 'fecha_fin', 'estado', 'tipo_corte'];
+    protected $fillable = ['gestion_id', 'nombre', 'fecha_inicio', 'fecha_fin', 'estado', 'tipo_corte'];
+
+    public function gestion()
+    {
+        return $this->belongsTo(Gestion::class);
+    }
 
     public function facturacions()
     {

@@ -11,6 +11,7 @@ use App\Http\Controllers\FacturacionController;
 use App\Http\Controllers\PublicController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\GestionController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -18,6 +19,9 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/public/search', [PublicController::class, 'searchByCI']);
 Route::post('/public/facturaciones/{facturacion}/upload', [FacturacionController::class, 'uploadFactura']);
 Route::get('/public/template-practicas', [FacturacionController::class, 'downloadTemplatePracticas']);
+Route::get('/public/gestiones', [GestionController::class, 'publicIndex']);
+Route::get('/public/gestiones/{id}/cortes', [GestionController::class, 'getCortes']);
+Route::get('/public/gestiones/nombre/{nombre}/cortes', [GestionController::class, 'getCortesByNombre']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -34,6 +38,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
 
     Route::get('roles', [RoleController::class, 'index']);
+
+    Route::apiResource('gestiones', GestionController::class);
+    Route::get('gestiones/{gestion}/cortes', [GestionController::class, 'getCortes']);
 
     Route::apiResource('cortes', CorteController::class);
     Route::apiResource('sedes', SedeController::class);
