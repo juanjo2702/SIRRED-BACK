@@ -13,6 +13,8 @@ class CorsMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
+        $origin = $request->headers->get('Origin') ?? '';
+
         $defaultAllowed = [
             'https://sirred.xpertiaplus.com',
             'https://sirred.clubatleticoimperial.com',
