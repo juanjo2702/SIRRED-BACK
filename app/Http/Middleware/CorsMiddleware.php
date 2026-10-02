@@ -16,6 +16,10 @@ class CorsMiddleware
         $origin = $request->headers->get('Origin') ?? '';
 
         $defaultAllowed = [
+            'https://facturas.claure.pro',
+            'http://facturas.claure.pro',
+            'https://api.facturas.claure.pro',
+            'http://api.facturas.claure.pro',
             'https://sirred.xpertiaplus.com',
             'https://sirred.clubatleticoimperial.com',
             'http://localhost:9000',
@@ -26,10 +30,10 @@ class CorsMiddleware
         $envAllowed = env('CORS_ALLOWED_ORIGINS') ? explode(',', env('CORS_ALLOWED_ORIGINS')) : [];
         $allowedOrigins = array_unique(array_merge($defaultAllowed, $envAllowed));
 
-        $allowOrigin = 'https://sirred.xpertiaplus.com';
+        $allowOrigin = 'https://facturas.claure.pro';
         if (in_array($origin, $allowedOrigins)) {
             $allowOrigin = $origin;
-        } elseif (app()->environment('local') && $origin && (str_contains($origin, 'localhost') || str_contains($origin, '127.0.0.1'))) {
+        } elseif ($origin && (str_contains($origin, 'claure.pro') || str_contains($origin, 'xpertiaplus.com') || str_contains($origin, 'localhost') || str_contains($origin, '127.0.0.1'))) {
             $allowOrigin = $origin;
         }
 
