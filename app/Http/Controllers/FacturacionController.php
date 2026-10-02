@@ -3,19 +3,35 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-
 use App\Models\Facturacion;
 use App\Models\Corte;
+use App\Models\SedeCarrera;
 use App\Imports\DocentesImport;
 use App\Imports\DocentesPracticaImport;
 use App\Exports\FacturacionesExport;
+use App\Exports\TemplatePracticasExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
-use App\Models\SedeCarrera;
-use App\Exports\TemplatePracticasExport;
+use App\Services\FacturacionUpdateService;
+use App\Services\FacturacionUploadService;
+use App\Services\FacturacionPrintPackageService;
 
 class FacturacionController extends Controller
 {
+    protected FacturacionUpdateService $updateService;
+    protected FacturacionUploadService $uploadService;
+    protected FacturacionPrintPackageService $printPackageService;
+
+    public function __construct(
+        FacturacionUpdateService $updateService,
+        FacturacionUploadService $uploadService,
+        FacturacionPrintPackageService $printPackageService
+    ) {
+        $this->updateService = $updateService;
+        $this->uploadService = $uploadService;
+        $this->printPackageService = $printPackageService;
+    }
+
     public function uploadExcel(Request $request)
     {
         $request->validate([
@@ -103,42 +119,51 @@ class FacturacionController extends Controller
         return $query->get();
     }
 
+    /**
+     * Public upload endpoint (respects closed cuts and approved locks).
+     */
     public function uploadFactura(Request $request, Facturacion $facturacion)
     {
-        // Eager load relationships
-        $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
-
         $request->validate([
             'factura' => 'required|file|mimes:pdf|max:2048' // 2MB max
         ]);
 
-        if ($facturacion->tipo_contrato !== 'FACTURACION') {
-            return response()->json(['message' => 'Solo tipo FACTURACION puede subir facturas'], 400);
+        try {
+            $file = $request->file('factura');
+            $updatedFact = $this->uploadService->upload($facturacion, $file, false);
+            return response()->json([
+                'message' => 'Factura subida correctamente',
+                'facturacion' => $updatedFact
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
         }
+    }
 
-        // Prevent replacing approved invoices
-        if ($facturacion->estado_subida === 'APROBADO') {
-            return response()->json(['message' => 'No se puede modificar una factura aprobada'], 400);
-        }
-
-        // Delete old file if exists
-        if ($facturacion->factura_path) {
-            Storage::disk('public')->delete($facturacion->factura_path);
-        }
-
-        $file = $request->file('factura');
-        $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-        $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
-        $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
-        $path = $file->storeAs('facturas', $filename, 'public');
-
-        $facturacion->update([
-            'factura_path' => $path,
-            'fecha_subida' => now(),
-            'estado_subida' => 'SUBIDA'
+    /**
+     * Private administrative upload endpoint (can bypass closed cuts and force replace approved invoices).
+     */
+    public function adminUploadFactura(Request $request, Facturacion $facturacion)
+    {
+        $request->validate([
+            'factura' => 'required|file|mimes:pdf|max:2048', // 2MB max
+            'comment' => 'nullable|string',
+            'force'   => 'nullable|boolean'
         ]);
 
-        return response()->json(['message' => 'Factura subida correctamente']);
+        try {
+            $file = $request->file('factura');
+            $comment = $request->comment;
+            $force = $request->boolean('force');
+
+            $updatedFact = $this->uploadService->upload($facturacion, $file, true, $comment, $force);
+            return response()->json([
+                'message' => 'Factura subida administrativamente de forma correcta',
+                'facturacion' => $updatedFact
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        }
     }
 
     public function denyFactura(Facturacion $facturacion)
@@ -168,58 +193,59 @@ class FacturacionController extends Controller
         return response()->json(['message' => 'Factura aprobada correctamente']);
     }
 
+    /**
+     * Administrative comprehensive update of docente and billing assignment.
+     */
     public function update(Request $request, Facturacion $facturacion)
     {
         $request->validate([
-            'sede_id' => 'required|exists:sedes,id',
-            'carrera_id' => 'required|exists:carreras,id',
+            'nombres'                 => 'required|string',
+            'apellidos'               => 'required|string',
+            'ci'                      => 'required|string',
+            'complemento'             => 'nullable|string|max:10',
+            'correo'                  => 'nullable|email',
+            'telefono'                => 'nullable|string',
+            'sede_id'                 => 'required|exists:sedes,id',
+            'carrera_id'              => 'required|exists:carreras,id',
+            'corte_id'                => 'required|exists:cortes,id',
+            'monto'                   => 'required|numeric',
+            'carga_horaria'           => 'required|integer',
+            'tipo_contrato'           => 'required|in:FACTURACION,RETENCION,AFILIACION',
+            'estado_subida'           => 'nullable|string',
+            'es_practica'             => 'nullable|boolean',
+            'fecha_inicio_practica'   => 'nullable|date',
+            'fecha_fin_practica'      => 'nullable|date',
+            'materia_practica'        => 'nullable|string',
+            'hospital_practica'       => 'nullable|string',
+            'observaciones'           => 'nullable|string',
+            'docente_estado'          => 'nullable|integer',
+            'comment'                 => 'nullable|string',
+            'force'                   => 'nullable|boolean',
         ]);
 
-        // Find the SedeCarrera ID
-        $sedeCarrera = SedeCarrera::where('sede_id', $request->sede_id)
-            ->where('carrera_id', $request->carrera_id)
-            ->first();
+        try {
+            $updatedFact = $this->updateService->update(
+                $facturacion,
+                $request->all(),
+                true, // isAdmin
+                $request->comment,
+                $request->boolean('force')
+            );
 
-        if (!$sedeCarrera) {
-            return response()->json(['message' => 'La carrera no está asignada a esta sede'], 400);
+            return response()->json([
+                'message' => 'Registro actualizado correctamente',
+                'facturacion' => $updatedFact
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Error interno al actualizar: ' . $e->getMessage()], 500);
         }
-
-        $facturacion->sede_carrera_id = $sedeCarrera->id;
-        $facturacion->save();
-
-        // If file exists, rename it
-        if ($facturacion->factura_path && Storage::disk('public')->exists($facturacion->factura_path)) {
-            $oldPath = $facturacion->factura_path;
-
-            // Generate new filename
-            // We need to reload relationships to get the new names
-            $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
-
-            $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-            $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
-            $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
-            $newPath = 'facturas/' . $filename;
-
-            if ($oldPath !== $newPath) {
-                // Check if target file already exists (collision)
-                if (Storage::disk('public')->exists($newPath)) {
-                     // Append timestamp to avoid collision or handle as needed.
-                     // For now, let's assume we overwrite or just fail?
-                     // User said "si se equivoca se guarda con la carrera", implying we should fix it.
-                     // If we overwrite, we might lose a file if two people have same CI/Carrera/Corte (should be impossible due to unique constraints usually, but let's be safe)
-                     // Actually, one docente per corte per carrera usually.
-                     Storage::disk('public')->delete($newPath);
-                }
-
-                Storage::disk('public')->move($oldPath, $newPath);
-                $facturacion->factura_path = $newPath;
-                $facturacion->save();
-            }
-        }
-
-        return response()->json(['message' => 'Facturación actualizada correctamente', 'facturacion' => $facturacion]);
     }
 
+    /**
+     * Administrative bulk update (updates Sede/Carrera for multiple assignments transaccionaly).
+     */
     public function bulkUpdate(Request $request)
     {
         $request->validate([
@@ -227,15 +253,8 @@ class FacturacionController extends Controller
             'ids.*' => 'exists:facturacions,id',
             'sede_id' => 'required|exists:sedes,id',
             'carrera_id' => 'required|exists:carreras,id',
+            'comment' => 'nullable|string'
         ]);
-
-        $sedeCarrera = SedeCarrera::where('sede_id', $request->sede_id)
-            ->where('carrera_id', $request->carrera_id)
-            ->first();
-
-        if (!$sedeCarrera) {
-            return response()->json(['message' => 'La carrera no está asignada a esta sede'], 400);
-        }
 
         $updatedCount = 0;
         $errors = [];
@@ -244,31 +263,16 @@ class FacturacionController extends Controller
 
         foreach ($facturaciones as $facturacion) {
             try {
-                $facturacion->sede_carrera_id = $sedeCarrera->id;
-                $facturacion->save();
-
-                // If file exists, rename it
-                if ($facturacion->factura_path && Storage::disk('public')->exists($facturacion->factura_path)) {
-                    $oldPath = $facturacion->factura_path;
-
-                    // Reload relationships
-                    $facturacion->load(['docente', 'sedeCarrera.carrera', 'corte']);
-
-                    $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-                    $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
-                    $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
-                    $newPath = 'facturas/' . $filename;
-
-                    if ($oldPath !== $newPath) {
-                        if (Storage::disk('public')->exists($newPath)) {
-                             Storage::disk('public')->delete($newPath);
-                        }
-
-                        Storage::disk('public')->move($oldPath, $newPath);
-                        $facturacion->factura_path = $newPath;
-                        $facturacion->save();
-                    }
-                }
+                $this->updateService->update(
+                    $facturacion,
+                    [
+                        'sede_id' => $request->sede_id,
+                        'carrera_id' => $request->carrera_id
+                    ],
+                    true, // isAdmin
+                    $request->comment ?? 'Bulk Update Sede/Carrera',
+                    true // force override for bulk
+                );
                 $updatedCount++;
             } catch (\Exception $e) {
                 $errors[] = "Error actualizando ID {$facturacion->id}: " . $e->getMessage();
@@ -281,6 +285,30 @@ class FacturacionController extends Controller
         ]);
     }
 
+    /**
+     * Generate the consolidated print package PDF.
+     */
+    public function printPackage(Request $request)
+    {
+        $request->validate([
+            'corte_id'      => 'required|exists:cortes,id',
+            'sede_id'       => 'required|exists:sedes,id',
+            'carrera_id'    => 'nullable|exists:carreras,id',
+            'estado_subida' => 'nullable|string'
+        ]);
+
+        try {
+            $pdfContent = $this->printPackageService->generatePackage($request->all());
+
+            return response($pdfContent, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="Consolidado_Facturas_' . now()->format('Ymd_His') . '.pdf"',
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Error al generar compilado de impresión: ' . $e->getMessage()], 500);
+        }
+    }
+
     public function exportFacturaciones(Request $request)
     {
         $corteId = $request->corte_id;
@@ -289,11 +317,9 @@ class FacturacionController extends Controller
         $sedeNombre = $request->sede_nombre;
         $carreraNombre = $request->carrera_nombre;
 
-        // Get corte name for filename
         $corte = Corte::find($corteId);
         $corteName = $corte ? str_replace(' ', '_', $corte->nombre) : 'Corte';
 
-        // Generate filename with date
         $date = date('Y-m-d_His');
         $filename = "Facturas_{$corteName}_{$date}.xlsx";
 
@@ -301,5 +327,32 @@ class FacturacionController extends Controller
             new FacturacionesExport($corteId, $tipoContrato, $estadoSubida, $sedeNombre, $carreraNombre),
             $filename
         );
+    }
+
+    /**
+     * Delete/destroy a facturacion record administratively.
+     */
+    public function destroy(Facturacion $facturacion, \App\Services\FacturacionAuditService $auditService)
+    {
+        // 1. Delete associated invoice file if it exists
+        if ($facturacion->factura_path) {
+            Storage::disk('public')->delete($facturacion->factura_path);
+        }
+
+        // 2. Audit log
+        $auditService->logAction(
+            'DELETE_FACTURACION_RECORD',
+            null, // Pass null so it survives the database cascade delete
+            $facturacion->toArray(),
+            null,
+            'Registro de facturación ID ' . $facturacion->id . ' de docente ' . ($facturacion->docente->nombre ?? '') . ' ' . ($facturacion->docente->apellidos ?? '') . ' eliminado por el administrador debido a carga errónea o corrección.'
+        );
+
+        // 3. Delete from DB
+        $facturacion->delete();
+
+        return response()->json([
+            'message' => 'Registro de facturación eliminado correctamente.'
+        ]);
     }
 }

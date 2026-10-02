@@ -19,7 +19,8 @@ class PublicController extends Controller
             return response()->json(['message' => 'No hay ningún corte activo en este momento'], 404);
         }
 
-        $docente = Docente::where('ci', $request->ci)->first();
+        $ci = trim((string) $request->ci);
+        $docente = Docente::where('ci', $ci)->first();
 
         if (!$docente) {
             return response()->json(['message' => 'No se encontró información para este CI'], 404);

@@ -9,7 +9,8 @@ class Facturacion extends Model
     protected $fillable = [
         'docente_id', 'sede_carrera_id', 'corte_id', 'tipo_contrato',
         'monto', 'carga_horaria', 'fecha_subida', 'factura_path', 'estado_subida',
-        'es_practica', 'fecha_inicio_practica', 'fecha_fin_practica', 'materia_practica', 'hospital_practica'
+        'es_practica', 'fecha_inicio_practica', 'fecha_fin_practica', 'materia_practica', 'hospital_practica',
+        'observaciones'
     ];
 
     public function docente()
@@ -25,5 +26,10 @@ class Facturacion extends Model
     public function corte()
     {
         return $this->belongsTo(Corte::class);
+    }
+
+    public function logs()
+    {
+        return $this->hasMany(FacturacionLog::class);
     }
 }

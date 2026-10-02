@@ -20,7 +20,7 @@ class DatabaseSeeder extends Seeder
             'name' => 'Jenny',
             'apellidos' => 'Garcia Morales',
             'ci' => '5927724',
-            'role' => 'admin',
+            'role_id' => 2,
             'password' => \Hash::make('5927724'), // CI as default password
             'status' => 1,
             'password_changed_at' => null // Force password change on first login

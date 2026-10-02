@@ -47,9 +47,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('facturaciones/upload-excel-practicas', [FacturacionController::class, 'uploadExcelPracticas']);
     Route::get('facturaciones', [FacturacionController::class, 'getFacturaciones']);
     Route::post('facturaciones/{facturacion}/upload-factura', [FacturacionController::class, 'uploadFactura']);
+    Route::post('facturaciones/{facturacion}/admin-upload', [FacturacionController::class, 'adminUploadFactura']);
     Route::post('facturaciones/{facturacion}/deny', [FacturacionController::class, 'denyFactura']);
     Route::post('facturaciones/{facturacion}/approve', [FacturacionController::class, 'approveFactura']);
     Route::put('facturaciones/{facturacion}', [FacturacionController::class, 'update']);
+    Route::delete('facturaciones/{facturacion}', [FacturacionController::class, 'destroy']);
     Route::post('facturaciones/bulk-update', [FacturacionController::class, 'bulkUpdate']);
+    Route::post('facturaciones/print-package', [FacturacionController::class, 'printPackage']);
     Route::get('facturaciones/export', [FacturacionController::class, 'exportFacturaciones']);
 });
