@@ -355,4 +355,28 @@ class FacturacionController extends Controller
             'message' => 'Registro de facturación eliminado correctamente.'
         ]);
     }
+
+    /**
+     * Generar el nombre de archivo estandarizado para el PDF de la factura:
+     * {GESTION}_{CI}_{SEDE}_{CARRERA}_{CORTE}.pdf
+     * Si no tiene gestión asociada, mantiene {CI}_{SEDE}_{CARRERA}_{CORTE}.pdf
+     */
+    public function generateFacturaFilename(Facturacion $facturacion): string
+    {
+        $facturacion->loadMissing(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte.gestion']);
+
+        $ci = $facturacion->docente->ci ?? 'SIN_CI';
+        $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id ?? 'SEDE';
+        $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre ?? 'CARRERA');
+        $corteNombre = str_replace(' ', '_', $facturacion->corte->nombre ?? 'CORTE');
+
+        $gestionPrefix = '';
+        if ($facturacion->corte && $facturacion->corte->gestion && !empty($facturacion->corte->gestion->nombre)) {
+            $gestionClean = str_replace(['/', ' '], ['-', '_'], trim($facturacion->corte->gestion->nombre));
+            $gestionPrefix = $gestionClean . '_';
+        }
+
+        $filename = $gestionPrefix . $ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $corteNombre . '.pdf';
+        return preg_replace('/[^a-zA-Z0-9_\.-]/', '', $filename);
+    }
 }

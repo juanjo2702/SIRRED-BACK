@@ -10,18 +10,25 @@ class CorteController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Corte::orderBy('fecha_inicio', 'desc');
+        $query = Corte::with('gestion')->orderBy('fecha_inicio', 'desc');
+
         if ($request->has('tipo_corte')) {
             $query->where('tipo_corte', $request->tipo_corte);
         } else {
             $query->where('tipo_corte', 'REGULAR');
         }
+
+        if ($request->has('gestion_id') && !empty($request->gestion_id)) {
+            $query->where('gestion_id', $request->gestion_id);
+        }
+
         return $query->get();
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'gestion_id' => 'nullable|exists:gestiones,id',
             'nombre' => 'required',
             'fecha_inicio' => 'required|date',
             'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
@@ -33,6 +40,7 @@ class CorteController extends Controller
             'fecha_inicio.date' => 'La fecha de inicio debe ser una fecha válida',
             'fecha_fin.date' => 'La fecha de fin debe ser una fecha válida',
             'fecha_fin.after_or_equal' => 'La fecha de fin debe ser igual o posterior a la fecha de inicio',
+            'gestion_id.exists' => 'La gestión seleccionada no es válida',
         ]);
 
         if ($validated['estado']) {
@@ -44,12 +52,14 @@ class CorteController extends Controller
         }
 
         $corte = Corte::create($validated);
+        $corte->load('gestion');
         return response()->json($corte, 201);
     }
 
     public function update(Request $request, Corte $corte)
     {
         $validated = $request->validate([
+            'gestion_id' => 'nullable|exists:gestiones,id',
             'nombre' => 'required',
             'fecha_inicio' => 'required|date',
             'fecha_fin' => 'nullable|date|after_or_equal:fecha_inicio',
@@ -61,6 +71,7 @@ class CorteController extends Controller
             'fecha_inicio.date' => 'La fecha de inicio debe ser una fecha válida',
             'fecha_fin.date' => 'La fecha de fin debe ser una fecha válida',
             'fecha_fin.after_or_equal' => 'La fecha de fin debe ser igual o posterior a la fecha de inicio',
+            'gestion_id.exists' => 'La gestión seleccionada no es válida',
         ]);
 
         if ($validated['estado'] && !$corte->estado) {
@@ -72,6 +83,7 @@ class CorteController extends Controller
         }
 
         $corte->update($validated);
+        $corte->load('gestion');
         return response()->json($corte);
     }
 

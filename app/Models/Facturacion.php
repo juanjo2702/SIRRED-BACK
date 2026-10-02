@@ -13,6 +13,12 @@ class Facturacion extends Model
         'observaciones'
     ];
 
+    protected $casts = [
+        'monto' => 'float',
+        'carga_horaria' => 'float',
+        'es_practica' => 'boolean',
+    ];
+
     public function docente()
     {
         return $this->belongsTo(Docente::class);

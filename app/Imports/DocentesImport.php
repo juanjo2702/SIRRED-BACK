@@ -60,8 +60,8 @@ class DocentesImport implements OnEachRow, WithHeadingRow, WithChunkReading
             'tipo_contrato' => $this->tipoContrato,
         ]);
 
-        $nuevoMonto = $row['liquido_pagable'] ?? 0;
-        $nuevaCarga = $row['carga_pagada'] ?? 0;
+        $nuevoMonto = $this->parseNumber($row['liquido_pagable'] ?? 0);
+        $nuevaCarga = $this->parseNumber($row['carga_pagada'] ?? 0);
 
         // Check if amount changed and reset status if it was approved
         if ($facturacion->exists && $facturacion->monto != $nuevoMonto) {
@@ -73,6 +73,36 @@ class DocentesImport implements OnEachRow, WithHeadingRow, WithChunkReading
         $facturacion->monto = $nuevoMonto;
         $facturacion->carga_horaria = $nuevaCarga;
         $facturacion->save();
+    }
+
+    private function parseNumber($value): float
+    {
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+
+        if (is_string($value)) {
+            $clean = trim($value);
+            // Handle cases with thousands separators and decimal points
+            if (str_contains($clean, ',') && str_contains($clean, '.')) {
+                if (strrpos($clean, ',') > strrpos($clean, '.')) {
+                    // European / Latin format: 1.234,50
+                    $clean = str_replace('.', '', $clean);
+                    $clean = str_replace(',', '.', $clean);
+                } else {
+                    // US format: 1,234.50
+                    $clean = str_replace(',', '', $clean);
+                }
+            } elseif (str_contains($clean, ',')) {
+                // Comma as decimal separator: 12,50
+                $clean = str_replace(',', '.', $clean);
+            }
+
+            $clean = preg_replace('/[^\d.-]/', '', $clean);
+            return is_numeric($clean) ? (float) $clean : 0.0;
+        }
+
+        return 0.0;
     }
 
     public function chunkSize(): int

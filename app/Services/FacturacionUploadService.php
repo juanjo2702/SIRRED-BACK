@@ -62,10 +62,20 @@ class FacturacionUploadService
             Storage::disk('public')->delete($facturacion->factura_path);
         }
 
-        // Generate filename matching naming rules
-        $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-        $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
-        $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
+        $facturacion->loadMissing(['docente', 'sedeCarrera.carrera', 'sedeCarrera.sede', 'corte.gestion']);
+
+        $ci = $facturacion->docente->ci ?? 'SIN_CI';
+        $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre ?? 'CARRERA');
+        $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id ?? 'SEDE';
+        $corteNombre = str_replace(' ', '_', $facturacion->corte->nombre ?? 'CORTE');
+
+        $gestionPrefix = '';
+        if ($facturacion->corte && $facturacion->corte->gestion && !empty($facturacion->corte->gestion->nombre)) {
+            $gestionClean = str_replace(['/', ' '], ['-', '_'], trim($facturacion->corte->gestion->nombre));
+            $gestionPrefix = $gestionClean . '_';
+        }
+
+        $filename = $gestionPrefix . $ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $corteNombre . '.pdf';
         
         // Clean filename
         $filename = preg_replace('/[^a-zA-Z0-9_\.-]/', '', $filename);

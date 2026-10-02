@@ -13,13 +13,16 @@ class CorsMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $origin = $request->headers->get('Origin');
-        $allowedOrigins = [
+        $defaultAllowed = [
             'https://sirred.xpertiaplus.com',
             'https://sirred.clubatleticoimperial.com',
             'http://localhost:9000',
             'http://127.0.0.1:9000',
+            'http://localhost:8000',
+            'http://localhost:5173'
         ];
+        $envAllowed = env('CORS_ALLOWED_ORIGINS') ? explode(',', env('CORS_ALLOWED_ORIGINS')) : [];
+        $allowedOrigins = array_unique(array_merge($defaultAllowed, $envAllowed));
 
         $allowOrigin = 'https://sirred.xpertiaplus.com';
         if (in_array($origin, $allowedOrigins)) {

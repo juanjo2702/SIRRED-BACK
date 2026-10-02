@@ -20,7 +20,7 @@ class FacturacionFileRenameService
         }
 
         // Ensure we have the latest relationships loaded
-        $facturacion->load(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte']);
+        $facturacion->loadMissing(['docente', 'sedeCarrera.sede', 'sedeCarrera.carrera', 'corte.gestion']);
 
         $oldPath = $facturacion->factura_path;
 
@@ -29,9 +29,18 @@ class FacturacionFileRenameService
             return false;
         }
 
-        $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre);
-        $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id;
-        $filename = $facturacion->docente->ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $facturacion->corte->nombre . '.pdf';
+        $ci = $facturacion->docente->ci ?? 'SIN_CI';
+        $sedeIdentifier = $facturacion->sedeCarrera->sede->abreviacion ?? $facturacion->sedeCarrera->sede->id ?? 'SEDE';
+        $carreraNombre = str_replace(' ', '_', $facturacion->sedeCarrera->carrera->nombre ?? 'CARRERA');
+        $corteNombre = str_replace(' ', '_', $facturacion->corte->nombre ?? 'CORTE');
+
+        $gestionPrefix = '';
+        if ($facturacion->corte && $facturacion->corte->gestion && !empty($facturacion->corte->gestion->nombre)) {
+            $gestionClean = str_replace(['/', ' '], ['-', '_'], trim($facturacion->corte->gestion->nombre));
+            $gestionPrefix = $gestionClean . '_';
+        }
+
+        $filename = $gestionPrefix . $ci . '_' . $sedeIdentifier . '_' . $carreraNombre . '_' . $corteNombre . '.pdf';
         
         // Clean filename of invalid filesystem characters but keep extension, dots and underscores
         $filename = preg_replace('/[^a-zA-Z0-9_\.-]/', '', $filename);
