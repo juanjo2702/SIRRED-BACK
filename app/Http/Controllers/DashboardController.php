@@ -16,7 +16,25 @@ class DashboardController extends Controller
         $corteActivo = Corte::where('estado', 1)->first();
 
         if (!$corteActivo) {
-            return response()->json(['message' => 'No hay corte activo'], 400);
+            return response()->json([
+                'corte_activo' => null,
+                'resumen' => [
+                    'total_facturaciones' => 0,
+                    'total_docentes' => 0,
+                    'monto_total' => 0,
+                    'carga_horaria_total' => 0,
+                    'facturas_pendientes' => 0,
+                    'facturas_aprobadas' => 0,
+                    'facturas_subidas' => 0,
+                ],
+                'facturaciones_por_tipo' => [],
+                'facturaciones_por_estado' => [],
+                'facturaciones_por_sede' => [],
+                'montos_por_sede' => [],
+                'facturaciones_por_carrera' => [],
+                'montos_por_tipo' => [],
+                'message' => 'No hay corte activo'
+            ], 200);
         }
 
         $sedeId = $request->sede_id;
