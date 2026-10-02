@@ -46,7 +46,7 @@ class FacturacionPrintPackageService
 
         // Initialize FPDI and merge documents
         $pdf = new Fpdi();
-        $pdf->SetTitle(utf8_decode("REPORTE CONSOLIDADO DE FACTURAS - SIRRED"));
+        $pdf->SetTitle($this->encodeText("REPORTE CONSOLIDADO DE FACTURAS - SIRRED"));
 
         $hasData = false;
         $processedMetrics = [];
@@ -210,13 +210,13 @@ class FacturacionPrintPackageService
         $pdf->SetFont('Arial', 'B', 9);
         $pdf->SetTextColor(120, 120, 120);
         $pdf->SetXY(15, 20);
-        $pdf->Cell(180, 5, utf8_decode("SISTEMA DE REGISTRO DE RESPALDOS DOCENTES (SIRRED) - UNITEPC"), 0, 0, 'C');
+        $pdf->Cell(180, 5, $this->encodeText("SISTEMA DE REGISTRO DE RESPALDOS DOCENTES (SIRRED) - UNITEPC"), 0, 0, 'C');
 
         // Main Title Box
         $pdf->SetXY(20, 60);
         $pdf->SetFont('Arial', 'B', 15);
         $pdf->SetTextColor(180, 60, 60);
-        $pdf->Cell(170, 10, utf8_decode("HOJA DE CONTROL - RESPALDO AUSENTE"), 0, 1, 'C');
+        $pdf->Cell(170, 10, $this->encodeText("HOJA DE CONTROL - RESPALDO AUSENTE"), 0, 1, 'C');
         $pdf->SetDrawColor(180, 60, 60);
         $pdf->SetLineWidth(0.5);
         $pdf->Line(40, 72, 170, 72);
@@ -237,9 +237,9 @@ class FacturacionPrintPackageService
 
         foreach ($details as $label => $val) {
             $pdf->SetFont('Arial', 'B', 11);
-            $pdf->Cell(60, 10, utf8_decode($label . ':'), 0, 0, 'R');
+            $pdf->Cell(60, 10, $this->encodeText($label . ':'), 0, 0, 'R');
             $pdf->SetFont('Arial', '', 11);
-            $pdf->Cell(110, 10, utf8_decode(' ' . $val), 0, 1, 'L');
+            $pdf->Cell(110, 10, $this->encodeText(' ' . $val), 0, 1, 'L');
         }
 
         $pdf->Ln(20);
@@ -252,12 +252,23 @@ class FacturacionPrintPackageService
         
         $pdf->SetX(30);
         $pdf->SetFont('Arial', 'B', 12);
-        $pdf->Cell(150, 20, utf8_decode($message), 1, 1, 'C', true);
+        $pdf->Cell(150, 20, $this->encodeText($message), 1, 1, 'C', true);
 
         // Footer Metadata
         $pdf->SetXY(20, 260);
         $pdf->SetFont('Arial', 'I', 8);
         $pdf->SetTextColor(150, 150, 150);
-        $pdf->Cell(170, 5, utf8_decode("Este documento es una hoja de control autogenerada. No modifique los respaldos originales."), 0, 0, 'C');
+        $pdf->Cell(170, 5, $this->encodeText("Este documento es una hoja de control autogenerada. No modifique los respaldos originales."), 0, 0, 'C');
+    }
+
+    /**
+     * Encode UTF-8 string to ISO-8859-1 for FPDF without deprecation issues in PHP 8.2+
+     */
+    protected function encodeText(?string $text): string
+    {
+        if ($text === null) {
+            return '';
+        }
+        return mb_convert_encoding($text, 'ISO-8859-1', 'UTF-8');
     }
 }
